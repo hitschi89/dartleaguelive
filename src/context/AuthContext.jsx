@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import { supabase, supabaseConfigured } from '../lib/supabaseClient.js';
 import { startSync } from '../lib/sync.js';
 
-const AuthContext = createContext(null);
+export const AuthContext = createContext(null);
 
 async function fetchMembership(userId) {
   const { data, error } = await supabase

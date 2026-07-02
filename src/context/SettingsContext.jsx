@@ -3,7 +3,7 @@ import { useAuth } from './AuthContext.jsx';
 import { supabase } from '../lib/supabaseClient.js';
 import { pickFile } from '../lib/platform.js';
 
-const SettingsContext = createContext(null);
+export const SettingsContext = createContext(null);
 const THEME_KEY = 'pitwall.theme';
 
 // Team branding (name/logo/accent) is shared team data, stored on the

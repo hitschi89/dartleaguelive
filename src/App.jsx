@@ -1,7 +1,9 @@
+import { useState } from 'react';
 import { Routes, Route } from 'react-router-dom';
+import { Menu, Flag } from 'lucide-react';
 import Sidebar from './components/Sidebar.jsx';
 import { AuthProvider, useAuth } from './context/AuthContext.jsx';
-import { SettingsProvider } from './context/SettingsContext.jsx';
+import { SettingsProvider, useSettings } from './context/SettingsContext.jsx';
 import SetupNotice from './pages/auth/SetupNotice.jsx';
 import AuthScreen from './pages/auth/AuthScreen.jsx';
 import TeamSetup from './pages/auth/TeamSetup.jsx';
@@ -13,24 +15,48 @@ import Calendar from './pages/Calendar.jsx';
 import Team from './pages/Team.jsx';
 import SettingsPage from './pages/Settings.jsx';
 
+function MobileTopBar({ onOpenMenu }) {
+  const { settings, logoDataUrl } = useSettings();
+  return (
+    <div className="flex items-center gap-3 border-b border-app bg-sidebar px-4 py-3 lg:hidden">
+      <button onClick={onOpenMenu} className="text-secondary hover:text-primary">
+        <Menu size={22} />
+      </button>
+      {logoDataUrl ? (
+        <img src={logoDataUrl} alt="Team-Logo" className="h-7 w-7 rounded-md object-cover" />
+      ) : (
+        <div className="flex h-7 w-7 items-center justify-center rounded-md bg-accent/15 text-accent">
+          <Flag size={14} />
+        </div>
+      )}
+      <span className="truncate text-sm font-semibold text-primary">{settings?.teamName || 'PitWall'}</span>
+    </div>
+  );
+}
+
 function Shell() {
+  const [menuOpen, setMenuOpen] = useState(false);
+
   return (
     <SettingsProvider>
       <div className="flex h-screen w-screen overflow-hidden bg-app">
-        <Sidebar />
-        <main className="flex-1 overflow-y-auto scrollbar-thin">
-          <div className="mx-auto max-w-6xl px-8 py-8">
-            <Routes>
-              <Route path="/" element={<Dashboard />} />
-              <Route path="/dokumente" element={<Documents />} />
-              <Route path="/bulletins" element={<Bulletins />} />
-              <Route path="/kommunikation" element={<Communication />} />
-              <Route path="/kalender" element={<Calendar />} />
-              <Route path="/team" element={<Team />} />
-              <Route path="/einstellungen" element={<SettingsPage />} />
-            </Routes>
-          </div>
-        </main>
+        <Sidebar open={menuOpen} onClose={() => setMenuOpen(false)} />
+        <div className="flex min-w-0 flex-1 flex-col">
+          <MobileTopBar onOpenMenu={() => setMenuOpen(true)} />
+          <main className="flex-1 overflow-y-auto scrollbar-thin">
+            <div className="mx-auto max-w-6xl px-4 py-6 sm:px-8 sm:py-8">
+              <Routes>
+                <Route path="/" element={<Dashboard />} />
+                <Route path="/dokumente" element={<Documents />} />
+                <Route path="/bulletins" element={<Bulletins />} />
+                <Route path="/kommunikation" element={<Communication />} />
+                <Route path="/kalender" element={<Calendar />} />
+                <Route path="/team" element={<Team />} />
+                <Route path="/einstellungen" element={<SettingsPage />} />
+              </Routes>
+            </div>
+          </main>
+        </div>
       </div>
     </SettingsProvider>
   );
