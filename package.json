@@ -15,7 +15,7 @@
     "start": "cross-env NODE_ENV=production electron ."
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.45.4",
+    "@supabase/supabase-js": "^2.110.0",
     "idb": "^8.0.0",
     "lucide-react": "^0.474.0",
     "react": "^18.3.1",
