@@ -75,15 +75,17 @@ export function AuthProvider({ children }) {
   const createTeam = useCallback(
     async ({ teamName, displayName, role }) => {
       const userId = session.user.id;
-      const { data: team, error: teamError } = await supabase
-        .from('teams')
-        .insert({ name: teamName })
-        .select()
-        .single();
+      // The team's id is generated client-side and the insert isn't
+      // chained with .select() - reading the row back would need the
+      // teams SELECT policy (which requires membership) to already pass,
+      // but the membership row doesn't exist until the next step. Knowing
+      // the id upfront sidesteps that chicken-and-egg RLS problem.
+      const teamId = crypto.randomUUID();
+      const { error: teamError } = await supabase.from('teams').insert({ id: teamId, name: teamName });
       if (teamError) throw teamError;
 
       const { error: memberError } = await supabase.from('team_members').insert({
-        team_id: team.id,
+        team_id: teamId,
         user_id: userId,
         display_name: displayName,
         role: role || 'Teamchef',
@@ -93,7 +95,7 @@ export function AuthProvider({ children }) {
 
       const { error: channelError } = await supabase
         .from('channels')
-        .insert({ team_id: team.id, name: 'Allgemein', kind: 'general' });
+        .insert({ team_id: teamId, name: 'Allgemein', kind: 'general' });
       if (channelError) throw channelError;
 
       await reloadMembership(userId);
