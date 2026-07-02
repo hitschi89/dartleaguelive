@@ -14,6 +14,7 @@ create table if not exists teams (
   logo_path text,
   accent text not null default 'red' check (accent in ('red', 'orange')),
   invite_code text not null unique default substr(md5(random()::text || clock_timestamp()::text), 1, 8),
+  calendar_ics_url text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -43,10 +44,13 @@ create table if not exists events (
   "end" timestamptz,
   location text,
   notes text,
+  source text not null default 'manual' check (source in ('manual', 'import')),
+  external_uid text,
   created_by uuid references auth.users(id),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
-  deleted_at timestamptz
+  deleted_at timestamptz,
+  unique (team_id, external_uid)
 );
 
 create table if not exists documents (
@@ -90,10 +94,33 @@ create table if not exists channels (
   id uuid primary key default gen_random_uuid(),
   team_id uuid not null references teams(id) on delete cascade,
   name text not null,
-  kind text not null default 'general' check (kind in ('general', 'event')),
+  kind text not null default 'general' check (kind in ('general', 'event', 'custom')),
   event_id uuid references events(id) on delete cascade,
+  created_by uuid references auth.users(id),
   created_at timestamptz not null default now(),
   unique (team_id, event_id)
+);
+
+create table if not exists channel_members (
+  channel_id uuid not null references channels(id) on delete cascade,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  added_at timestamptz not null default now(),
+  primary key (channel_id, user_id)
+);
+
+create table if not exists tasks (
+  id uuid primary key default gen_random_uuid(),
+  team_id uuid not null references teams(id) on delete cascade,
+  title text not null,
+  assignee_id uuid references team_members(id) on delete set null,
+  due_date timestamptz,
+  event_id uuid references events(id) on delete set null,
+  done boolean not null default false,
+  notes text,
+  created_by uuid references auth.users(id),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  deleted_at timestamptz
 );
 
 create table if not exists messages (
@@ -109,6 +136,30 @@ create table if not exists messages (
 );
 
 -- ---------------------------------------------------------------------------
+-- Migrations for installations that already ran an earlier version of this
+-- file (CREATE TABLE IF NOT EXISTS alone won't add new columns to an
+-- existing table, so these are explicit and safe to re-run).
+-- ---------------------------------------------------------------------------
+
+alter table teams add column if not exists calendar_ics_url text;
+
+alter table events add column if not exists source text not null default 'manual';
+alter table events add column if not exists external_uid text;
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'events_source_check') then
+    alter table events add constraint events_source_check check (source in ('manual', 'import'));
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'events_team_id_external_uid_key') then
+    alter table events add constraint events_team_id_external_uid_key unique (team_id, external_uid);
+  end if;
+end $$;
+
+alter table channels add column if not exists created_by uuid references auth.users(id);
+alter table channels drop constraint if exists channels_kind_check;
+alter table channels add constraint channels_kind_check check (kind in ('general', 'event', 'custom'));
+
+-- ---------------------------------------------------------------------------
 -- updated_at maintenance
 -- ---------------------------------------------------------------------------
 
@@ -122,7 +173,7 @@ $$ language plpgsql;
 do $$
 declare t text;
 begin
-  foreach t in array array['teams', 'team_members', 'events', 'documents', 'bulletins', 'messages']
+  foreach t in array array['teams', 'team_members', 'events', 'documents', 'bulletins', 'messages', 'tasks']
   loop
     execute format(
       'drop trigger if exists set_updated_at on %I; create trigger set_updated_at before update on %I for each row execute function set_updated_at();',
@@ -156,6 +207,21 @@ language sql security definer stable as $$
   select id, name from teams where invite_code = code;
 $$;
 
+-- Custom channels are only visible to their explicit member list; general
+-- and event channels stay visible to the whole team (checked separately via
+-- the team_id membership clause on each policy).
+create or replace function can_access_channel(target_channel_id uuid) returns boolean
+language sql security definer stable as $$
+  select case
+    when (select kind from channels where id = target_channel_id) = 'custom'
+      then exists (
+        select 1 from channel_members
+        where channel_id = target_channel_id and user_id = auth.uid()
+      )
+    else true
+  end;
+$$;
+
 -- ---------------------------------------------------------------------------
 -- Row Level Security
 -- ---------------------------------------------------------------------------
@@ -167,7 +233,9 @@ alter table documents enable row level security;
 alter table bulletins enable row level security;
 alter table bulletin_reads enable row level security;
 alter table channels enable row level security;
+alter table channel_members enable row level security;
 alter table messages enable row level security;
+alter table tasks enable row level security;
 
 drop policy if exists teams_select on teams;
 create policy teams_select on teams for select
@@ -218,12 +286,63 @@ create policy bulletin_reads_all on bulletin_reads for all
   with check (user_id = auth.uid());
 
 drop policy if exists channels_all on channels;
-create policy channels_all on channels for all
-  using (team_id in (select my_team_ids()))
+
+drop policy if exists channels_select on channels;
+create policy channels_select on channels for select
+  using (team_id in (select my_team_ids()) and (kind <> 'custom' or can_access_channel(id)));
+
+drop policy if exists channels_insert on channels;
+create policy channels_insert on channels for insert
   with check (team_id in (select my_team_ids()));
 
+drop policy if exists channels_update on channels;
+create policy channels_update on channels for update
+  using (team_id in (select my_team_ids()) and (kind <> 'custom' or can_access_channel(id)));
+
+drop policy if exists channels_delete on channels;
+create policy channels_delete on channels for delete
+  using (team_id in (select my_team_ids()) and (created_by = auth.uid() or is_team_admin(team_id)));
+
+drop policy if exists channel_members_select on channel_members;
+create policy channel_members_select on channel_members for select
+  using (channel_id in (select id from channels where team_id in (select my_team_ids())));
+
+drop policy if exists channel_members_insert on channel_members;
+create policy channel_members_insert on channel_members for insert
+  with check (
+    channel_id in (
+      select id from channels c
+      where c.team_id in (select my_team_ids()) and (c.created_by = auth.uid() or is_team_admin(c.team_id))
+    )
+  );
+
+drop policy if exists channel_members_delete on channel_members;
+create policy channel_members_delete on channel_members for delete
+  using (
+    user_id = auth.uid()
+    or channel_id in (select id from channels c where c.created_by = auth.uid() or is_team_admin(c.team_id))
+  );
+
 drop policy if exists messages_all on messages;
-create policy messages_all on messages for all
+
+drop policy if exists messages_select on messages;
+create policy messages_select on messages for select
+  using (team_id in (select my_team_ids()) and can_access_channel(channel_id));
+
+drop policy if exists messages_insert on messages;
+create policy messages_insert on messages for insert
+  with check (team_id in (select my_team_ids()) and can_access_channel(channel_id));
+
+drop policy if exists messages_update on messages;
+create policy messages_update on messages for update
+  using (team_id in (select my_team_ids()) and (author_id = auth.uid() or is_team_admin(team_id)));
+
+drop policy if exists messages_delete on messages;
+create policy messages_delete on messages for delete
+  using (team_id in (select my_team_ids()) and (author_id = auth.uid() or is_team_admin(team_id)));
+
+drop policy if exists tasks_all on tasks;
+create policy tasks_all on tasks for all
   using (team_id in (select my_team_ids()))
   with check (team_id in (select my_team_ids()));
 
@@ -258,7 +377,7 @@ create policy team_files_delete on storage.objects for delete
 do $$
 declare t text;
 begin
-  foreach t in array array['team_members', 'events', 'documents', 'bulletins', 'channels', 'messages']
+  foreach t in array array['team_members', 'events', 'documents', 'bulletins', 'channels', 'channel_members', 'messages', 'tasks']
   loop
     begin
       execute format('alter publication supabase_realtime add table %I', t);

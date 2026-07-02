@@ -12,6 +12,7 @@ import Documents from './pages/Documents.jsx';
 import Bulletins from './pages/Bulletins.jsx';
 import Communication from './pages/Communication.jsx';
 import Calendar from './pages/Calendar.jsx';
+import Tasks from './pages/Tasks.jsx';
 import Team from './pages/Team.jsx';
 import SettingsPage from './pages/Settings.jsx';
 
@@ -51,6 +52,7 @@ function Shell() {
                 <Route path="/bulletins" element={<Bulletins />} />
                 <Route path="/kommunikation" element={<Communication />} />
                 <Route path="/kalender" element={<Calendar />} />
+                <Route path="/aufgaben" element={<Tasks />} />
                 <Route path="/team" element={<Team />} />
                 <Route path="/einstellungen" element={<SettingsPage />} />
               </Routes>

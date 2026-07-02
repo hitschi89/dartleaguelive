@@ -1,9 +1,9 @@
 import { openDB } from 'idb';
 
 const DB_NAME = 'pitwall';
-const DB_VERSION = 1;
+const DB_VERSION = 2; // bumped to add the 'tasks' store for existing browsers
 
-export const TABLES = ['team_members', 'documents', 'events', 'bulletins', 'bulletin_reads', 'channels', 'messages'];
+export const TABLES = ['team_members', 'documents', 'events', 'bulletins', 'bulletin_reads', 'channels', 'messages', 'tasks'];
 
 let dbPromise = null;
 

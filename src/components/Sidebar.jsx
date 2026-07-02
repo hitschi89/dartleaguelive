@@ -6,6 +6,7 @@ import {
   MessageSquare,
   CalendarDays,
   Users,
+  ListChecks,
   Settings as SettingsIcon,
   Flag,
   X,
@@ -18,6 +19,7 @@ const NAV_ITEMS = [
   { to: '/bulletins', label: 'Bulletins', icon: Megaphone },
   { to: '/kommunikation', label: 'Kommunikation', icon: MessageSquare },
   { to: '/kalender', label: 'Kalender', icon: CalendarDays },
+  { to: '/aufgaben', label: 'Aufgaben', icon: ListChecks },
   { to: '/team', label: 'Team', icon: Users },
   { to: '/einstellungen', label: 'Einstellungen', icon: SettingsIcon },
 ];

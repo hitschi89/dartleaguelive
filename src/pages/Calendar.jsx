@@ -1,6 +1,9 @@
 import { useMemo, useState } from 'react';
-import { ChevronLeft, ChevronRight, Plus, Timer, Trash2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Plus, Timer, Trash2, Upload, RefreshCw, Check, X as XIcon } from 'lucide-react';
 import { useEvents } from '../hooks/useEvents.js';
+import { useAuth } from '../context/AuthContext.jsx';
+import { supabase } from '../lib/supabaseClient.js';
+import { parseCalendarText } from '../lib/calendarImport.js';
 import { Card, PageHeader, Button, Input, Textarea, Select, Badge, Modal } from '../components/ui.jsx';
 
 const TYPE_LABEL = { training: 'Training', qualifying: 'Qualifying', race: 'Rennen', briefing: 'Briefing', other: 'Sonstiges' };
@@ -122,8 +125,169 @@ function EventModal({ open, onClose, onSave, onDelete, initial }) {
   );
 }
 
+function ImportModal({ open, onClose, onImported }) {
+  const { team } = useAuth();
+  const { importEvents } = useEvents();
+  const [icsUrl, setIcsUrl] = useState(team?.calendar_ics_url || '');
+  const [pasteText, setPasteText] = useState('');
+  const [preview, setPreview] = useState(null);
+  const [error, setError] = useState(null);
+  const [busy, setBusy] = useState(false);
+
+  const runParse = (text) => {
+    const parsed = parseCalendarText(text);
+    if (!parsed.length) {
+      setError('Es konnten keine Termine erkannt werden. Bitte den Kalendertext direkt einfügen.');
+      setPreview(null);
+      return;
+    }
+    setError(null);
+    setPreview(parsed.map((ev, i) => ({ ...ev, key: i, include: true })));
+  };
+
+  const fetchIcsUrl = async () => {
+    if (!icsUrl.trim()) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch(icsUrl.trim());
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const text = await res.text();
+      runParse(text);
+      supabase.from('teams').update({ calendar_ics_url: icsUrl.trim() }).eq('id', team.id).then(() => {});
+    } catch (err) {
+      setError(
+        `Konnte den Link nicht direkt abrufen (${err.message}). Manche Seiten blockieren automatische Abrufe (CORS) - bitte stattdessen den Kalendertext kopieren und unten einfügen.`
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const toggleInclude = (key) =>
+    setPreview((prev) => prev.map((e) => (e.key === key ? { ...e, include: !e.include } : e)));
+
+  const updatePreviewField = (key, field, value) =>
+    setPreview((prev) => prev.map((e) => (e.key === key ? { ...e, [field]: value } : e)));
+
+  const confirmImport = async () => {
+    const selected = preview.filter((e) => e.include);
+    if (!selected.length) return;
+    setBusy(true);
+    try {
+      await importEvents(selected);
+      onImported?.();
+      setPreview(null);
+      setPasteText('');
+      onClose();
+    } catch (err) {
+      setError(err.message || 'Import fehlgeschlagen.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Modal open={open} onClose={onClose} title="Kalender importieren" wide>
+      {!preview ? (
+        <div className="space-y-5">
+          <div>
+            <label className="mb-1 block text-xs font-medium text-secondary">
+              iCal/ICS-Abo-Link (falls vorhanden)
+            </label>
+            <div className="flex gap-2">
+              <Input
+                value={icsUrl}
+                onChange={(e) => setIcsUrl(e.target.value)}
+                placeholder="https://.../calendar.ics"
+              />
+              <Button onClick={fetchIcsUrl} disabled={busy || !icsUrl.trim()}>
+                Abrufen
+              </Button>
+            </div>
+          </div>
+
+          <div className="text-center text-xs text-muted">oder</div>
+
+          <div>
+            <label className="mb-1 block text-xs font-medium text-secondary">
+              Kalendertext einfügen (z. B. von der Webseite der Rennserie kopiert)
+            </label>
+            <Textarea
+              rows={8}
+              value={pasteText}
+              onChange={(e) => setPasteText(e.target.value)}
+              placeholder="Text mit Terminen hier einfügen…"
+            />
+            <Button className="mt-2 w-full" onClick={() => runParse(pasteText)} disabled={!pasteText.trim()}>
+              <Upload size={15} /> Termine erkennen
+            </Button>
+          </div>
+
+          {error && (
+            <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-400">
+              {error}
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="space-y-4">
+          <p className="text-sm text-secondary">
+            {preview.length} Termin(e) erkannt - bitte prüfen, anpassen und bestätigen:
+          </p>
+          <div className="max-h-96 space-y-2 overflow-y-auto">
+            {preview.map((ev) => (
+              <div
+                key={ev.key}
+                className={`rounded-lg border p-3 ${ev.include ? 'border-app' : 'border-app opacity-40'}`}
+              >
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => toggleInclude(ev.key)}
+                    className={`flex h-5 w-5 shrink-0 items-center justify-center rounded border ${
+                      ev.include ? 'border-accent bg-accent text-white' : 'border-app'
+                    }`}
+                  >
+                    {ev.include && <Check size={13} />}
+                  </button>
+                  <Input
+                    value={ev.title}
+                    onChange={(e) => updatePreviewField(ev.key, 'title', e.target.value)}
+                    className="flex-1"
+                  />
+                  <Input
+                    type="datetime-local"
+                    value={ev.start?.slice(0, 16)}
+                    onChange={(e) => updatePreviewField(ev.key, 'start', new Date(e.target.value).toISOString())}
+                    className="w-56 shrink-0"
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+          {error && (
+            <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-400">
+              {error}
+            </div>
+          )}
+          <div className="flex gap-2">
+            <Button variant="secondary" onClick={() => setPreview(null)}>
+              <XIcon size={15} /> Zurück
+            </Button>
+            <Button className="flex-1" onClick={confirmImport} disabled={busy}>
+              {busy ? 'Importiere…' : `${preview.filter((e) => e.include).length} Termin(e) importieren`}
+            </Button>
+          </div>
+        </div>
+      )}
+    </Modal>
+  );
+}
+
 export default function Calendar() {
-  const { events, addEvent, updateEvent, removeEvent } = useEvents();
+  const { team } = useAuth();
+  const { events, addEvent, updateEvent, removeEvent, importEvents } = useEvents();
+  const [importOpen, setImportOpen] = useState(false);
   const [cursor, setCursor] = useState(new Date());
   const [view, setView] = useState('month');
   const [modalState, setModalState] = useState(null);
@@ -161,15 +325,38 @@ export default function Calendar() {
     setModalState({ start: start.toISOString().slice(0, 16), end: start.toISOString().slice(0, 16), type: 'training', title: '', location: '', notes: '' });
   };
 
+  const resyncFeed = async () => {
+    if (!team?.calendar_ics_url) return;
+    try {
+      const res = await fetch(team.calendar_ics_url);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const text = await res.text();
+      const parsed = parseCalendarText(text);
+      await importEvents(parsed);
+    } catch (err) {
+      alert(`Aktualisierung fehlgeschlagen: ${err.message}`);
+    }
+  };
+
   return (
     <div>
       <PageHeader
         title="Kalender"
         subtitle="Trainings, Qualifyings, Rennen und Briefings im Blick."
         action={
-          <Button onClick={() => openNewForDay(new Date())}>
-            <Plus size={16} /> Neuer Termin
-          </Button>
+          <div className="flex gap-2">
+            {team?.calendar_ics_url && (
+              <Button variant="secondary" onClick={resyncFeed}>
+                <RefreshCw size={15} /> Kalender aktualisieren
+              </Button>
+            )}
+            <Button variant="secondary" onClick={() => setImportOpen(true)}>
+              <Upload size={16} /> Kalender importieren
+            </Button>
+            <Button onClick={() => openNewForDay(new Date())}>
+              <Plus size={16} /> Neuer Termin
+            </Button>
+          </div>
         }
       />
 
@@ -283,6 +470,8 @@ export default function Calendar() {
           onDelete={removeEvent}
         />
       )}
+
+      <ImportModal open={importOpen} onClose={() => setImportOpen(false)} />
     </div>
   );
 }

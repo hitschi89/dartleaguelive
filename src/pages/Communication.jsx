@@ -1,14 +1,84 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Hash, Send, Trash2, FileDown, FileText } from 'lucide-react';
+import { Hash, Send, Trash2, FileDown, FileText, Plus, Lock } from 'lucide-react';
 import { useMessages } from '../hooks/useMessages.js';
 import { useChannels } from '../hooks/useChannels.js';
-import { Card, PageHeader, Button, Textarea, EmptyState } from '../components/ui.jsx';
+import { useTeam } from '../hooks/useTeam.js';
+import { useAuth } from '../context/AuthContext.jsx';
+import { Card, PageHeader, Button, Input, Textarea, EmptyState, Modal } from '../components/ui.jsx';
+
+function NewChannelModal({ open, onClose, onCreate, members }) {
+  const { user } = useAuth();
+  const [name, setName] = useState('');
+  const [selected, setSelected] = useState([]);
+  const [busy, setBusy] = useState(false);
+
+  const toggleMember = (userId) => {
+    setSelected((prev) => (prev.includes(userId) ? prev.filter((id) => id !== userId) : [...prev, userId]));
+  };
+
+  const submit = async () => {
+    if (!name.trim()) return;
+    setBusy(true);
+    try {
+      await onCreate({ name: name.trim(), memberUserIds: selected });
+      setName('');
+      setSelected([]);
+      onClose();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const otherMembers = members.filter((m) => m.user_id !== user?.id);
+
+  return (
+    <Modal open={open} onClose={onClose} title="Neuer Kanal">
+      <div className="space-y-4">
+        <div>
+          <label className="mb-1 block text-xs font-medium text-secondary">Kanalname</label>
+          <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="z. B. Strategie" />
+        </div>
+        <div>
+          <label className="mb-1 block text-xs font-medium text-secondary">
+            Wer soll Zugriff haben? (du bist automatisch dabei)
+          </label>
+          <div className="max-h-56 space-y-1 overflow-y-auto rounded-lg border border-app p-2">
+            {otherMembers.length === 0 ? (
+              <p className="p-2 text-sm text-muted">Keine weiteren Teammitglieder vorhanden.</p>
+            ) : (
+              otherMembers.map((m) => (
+                <label
+                  key={m.id}
+                  className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-primary hover-app"
+                >
+                  <input
+                    type="checkbox"
+                    checked={selected.includes(m.user_id)}
+                    onChange={() => toggleMember(m.user_id)}
+                    className="accent-red-500"
+                  />
+                  {m.display_name}
+                  <span className="text-xs text-muted">({m.role})</span>
+                </label>
+              ))
+            )}
+          </div>
+        </div>
+        <Button className="w-full" onClick={submit} disabled={busy}>
+          {busy ? 'Wird erstellt…' : 'Kanal erstellen'}
+        </Button>
+      </div>
+    </Modal>
+  );
+}
 
 export default function Communication() {
   const { messages, loading, addMessage, removeMessage, exportText, exportPdf } = useMessages();
-  const { channels, loading: channelsLoading } = useChannels();
+  const { channels, loading: channelsLoading, addCustomChannel } = useChannels();
+  const { members } = useTeam();
   const [activeChannel, setActiveChannel] = useState(null);
   const [text, setText] = useState('');
+  const [newChannelOpen, setNewChannelOpen] = useState(false);
 
   useEffect(() => {
     if (!activeChannel && channels.length > 0) setActiveChannel(channels[0].id);
@@ -31,7 +101,7 @@ export default function Communication() {
     <div>
       <PageHeader
         title="Kommunikation"
-        subtitle="Team-Chat mit einem allgemeinen Kanal und automatischen Kanälen pro Event."
+        subtitle="Team-Chat mit allgemeinem Kanal, Event-Kanälen und eigenen Kanälen."
         action={
           <div className="flex gap-2">
             <Button
@@ -54,6 +124,12 @@ export default function Communication() {
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-[220px_1fr]">
         <Card className="p-2">
+          <div className="mb-1 flex items-center justify-between px-1">
+            <span className="text-xs font-semibold uppercase tracking-wider text-muted">Kanäle</span>
+            <button onClick={() => setNewChannelOpen(true)} className="text-muted hover:text-accent" title="Neuer Kanal">
+              <Plus size={16} />
+            </button>
+          </div>
           {channelsLoading ? (
             <p className="p-3 text-sm text-muted">Lade Kanäle…</p>
           ) : (
@@ -66,7 +142,7 @@ export default function Communication() {
                     activeChannel === c.id ? 'bg-accent/15 text-accent' : 'text-secondary hover-app'
                   }`}
                 >
-                  <Hash size={14} />
+                  {c.kind === 'custom' ? <Lock size={13} /> : <Hash size={14} />}
                   <span className="truncate">{c.name}</span>
                 </button>
               ))}
@@ -124,6 +200,13 @@ export default function Communication() {
           </div>
         </Card>
       </div>
+
+      <NewChannelModal
+        open={newChannelOpen}
+        onClose={() => setNewChannelOpen(false)}
+        onCreate={addCustomChannel}
+        members={members}
+      />
     </div>
   );
 }

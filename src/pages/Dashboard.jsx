@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { useEvents } from '../hooks/useEvents.js';
 import { useBulletins } from '../hooks/useBulletins.js';
+import { useTasks } from '../hooks/useTasks.js';
 import { Card, PageHeader, Badge, EmptyState } from '../components/ui.jsx';
 import { useSettings } from '../context/SettingsContext.jsx';
 
@@ -23,6 +24,7 @@ const QUICK_LINKS = [
   { to: '/bulletins', label: 'Bulletins', icon: Megaphone },
   { to: '/kommunikation', label: 'Kommunikation', icon: MessageSquare },
   { to: '/kalender', label: 'Kalender', icon: CalendarDays },
+  { to: '/aufgaben', label: 'Aufgaben', icon: ListChecks },
   { to: '/team', label: 'Team', icon: Users },
   { to: '/einstellungen', label: 'Einstellungen', icon: SettingsIcon },
 ];
@@ -39,7 +41,8 @@ function formatCountdown(dateStr) {
 export default function Dashboard() {
   const { settings } = useSettings();
   const { events, loading: eventsLoading } = useEvents();
-  const { bulletins, loading: bulletinsLoading, toggleRead } = useBulletins();
+  const { bulletins, loading: bulletinsLoading } = useBulletins();
+  const { tasks, loading: tasksLoading, toggleDone } = useTasks();
 
   const upcoming = events
     .filter((e) => new Date(e.end || e.start).getTime() >= Date.now())
@@ -50,7 +53,9 @@ export default function Dashboard() {
     .sort((a, b) => new Date(b.date) - new Date(a.date))
     .slice(0, 5);
 
-  const openBulletins = bulletins.filter((b) => !b.read);
+  const openTasks = tasks
+    .filter((t) => !t.done)
+    .sort((a, b) => new Date(a.due_date || '9999-12-31') - new Date(b.due_date || '9999-12-31'));
 
   return (
     <div>
@@ -131,20 +136,24 @@ export default function Dashboard() {
             <div className="flex items-center gap-2 text-sm font-semibold text-primary">
               <ListChecks size={18} className="text-accent" /> Offene Aufgaben
             </div>
-            <Badge tone={openBulletins.length ? 'amber' : 'green'}>{openBulletins.length} offen</Badge>
+            <Link to="/aufgaben" className="text-xs text-secondary hover:text-accent">
+              Alle ansehen
+            </Link>
           </div>
-          {openBulletins.length === 0 ? (
-            <EmptyState icon={CheckCircle2} title="Alles gelesen" description="Keine offenen Bulletins." />
+          {tasksLoading ? (
+            <p className="text-sm text-muted">Lade…</p>
+          ) : openTasks.length === 0 ? (
+            <EmptyState icon={CheckCircle2} title="Alles erledigt" description="Keine offenen Aufgaben." />
           ) : (
             <ul className="space-y-2">
-              {openBulletins.slice(0, 6).map((b) => (
+              {openTasks.slice(0, 6).map((t) => (
                 <li
-                  key={b.id}
+                  key={t.id}
                   className="flex items-center justify-between gap-2 rounded-lg bg-card-alt p-3 text-sm"
                 >
-                  <span className="truncate text-primary">{b.title}</span>
+                  <span className="truncate text-primary">{t.title}</span>
                   <button
-                    onClick={() => toggleRead(b.id, true)}
+                    onClick={() => toggleDone(t.id, true)}
                     className="shrink-0 text-xs font-medium text-accent hover:underline"
                   >
                     Erledigt
