@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { FileText, Upload, Search, Trash2, Tag } from 'lucide-react';
 import { useDocuments } from '../hooks/useDocuments.js';
 import { Card, PageHeader, Button, Input, EmptyState, Badge, Modal } from '../components/ui.jsx';
@@ -18,12 +18,13 @@ function formatSize(bytes) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-function UploadModal({ open, onClose, onUploaded }) {
+function UploadModal({ open, onClose }) {
   const { pickFiles, addDocument } = useDocuments();
   const [picked, setPicked] = useState([]);
   const [category, setCategory] = useState('Technisches Reglement');
   const [tags, setTags] = useState('');
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
 
   const handlePick = async () => {
     const files = await pickFiles();
@@ -33,31 +34,41 @@ function UploadModal({ open, onClose, onUploaded }) {
   const handleSubmit = async () => {
     if (!picked.length) return;
     setBusy(true);
+    setError(null);
     const tagList = tags
       .split(',')
       .map((t) => t.trim())
       .filter(Boolean);
-    for (const file of picked) {
-      await addDocument({ filePath: file.filePath, originalName: file.name, category, tags: tagList });
+    try {
+      for (const file of picked) {
+        await addDocument({ file, category, tags: tagList });
+      }
+      setPicked([]);
+      setTags('');
+      onClose();
+    } catch (err) {
+      setError(err.message || 'Upload fehlgeschlagen.');
+    } finally {
+      setBusy(false);
     }
-    setBusy(false);
-    setPicked([]);
-    setTags('');
-    onUploaded?.();
-    onClose();
   };
 
   return (
     <Modal open={open} onClose={onClose} title="Dokumente hochladen">
       <div className="space-y-4">
+        {error && (
+          <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-400">
+            {error}
+          </div>
+        )}
         <div>
           <Button variant="secondary" onClick={handlePick} className="w-full">
-            <Upload size={16} /> Dateien auswählen
+            <Upload size={16} /> Datei auswählen
           </Button>
           {picked.length > 0 && (
             <ul className="mt-3 space-y-1 text-sm text-secondary">
               {picked.map((f) => (
-                <li key={f.filePath} className="flex items-center justify-between">
+                <li key={f.name} className="flex items-center justify-between">
                   <span className="truncate">{f.name}</span>
                   <span className="text-xs text-muted">{formatSize(f.size)}</span>
                 </li>
@@ -86,7 +97,7 @@ function UploadModal({ open, onClose, onUploaded }) {
         </div>
 
         <Button className="w-full" disabled={!picked.length || busy} onClick={handleSubmit}>
-          {busy ? 'Wird hochgeladen…' : `${picked.length || ''} Dokument(e) hinzufügen`}
+          {busy ? 'Wird hochgeladen…' : 'Dokument hinzufügen'}
         </Button>
       </div>
     </Modal>
@@ -95,44 +106,40 @@ function UploadModal({ open, onClose, onUploaded }) {
 
 function PreviewModal({ doc, onClose }) {
   const { readDocument } = useDocuments();
-  const [src, setSrc] = useState(null);
-  const [mime, setMime] = useState(null);
+  const [url, setUrl] = useState(null);
 
-  useMemo(() => {
+  useEffect(() => {
     if (!doc) return;
-    readDocument(doc.id).then((res) => {
-      if (!res) return;
-      setMime(res.mime);
-      const byteChars = atob(res.data);
-      const byteNumbers = new Array(byteChars.length);
-      for (let i = 0; i < byteChars.length; i++) byteNumbers[i] = byteChars.charCodeAt(i);
-      const blob = new Blob([new Uint8Array(byteNumbers)], { type: res.mime });
-      setSrc(URL.createObjectURL(blob));
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [doc?.id]);
+    setUrl(null);
+    readDocument(doc.id).then((res) => setUrl(res?.url || null));
+  }, [doc, readDocument]);
 
   if (!doc) return null;
+  const isPdf = doc.file_name.toLowerCase().endsWith('.pdf');
+  const isImage = /\.(png|jpe?g|gif)$/i.test(doc.file_name);
 
   return (
-    <Modal open={!!doc} onClose={onClose} title={doc.fileName} wide>
-      {!src ? (
+    <Modal open={!!doc} onClose={onClose} title={doc.file_name} wide>
+      {!url ? (
         <p className="py-12 text-center text-sm text-muted">Lade Vorschau…</p>
-      ) : mime === 'application/pdf' ? (
-        <iframe title={doc.fileName} src={src} className="h-[70vh] w-full rounded-lg border border-app" />
-      ) : mime?.startsWith('image/') ? (
-        <img src={src} alt={doc.fileName} className="max-h-[70vh] w-full rounded-lg object-contain" />
+      ) : isPdf ? (
+        <iframe title={doc.file_name} src={url} className="h-[70vh] w-full rounded-lg border border-app" />
+      ) : isImage ? (
+        <img src={url} alt={doc.file_name} className="max-h-[70vh] w-full rounded-lg object-contain" />
       ) : (
-        <p className="py-12 text-center text-sm text-muted">
-          Keine Vorschau für diesen Dateityp verfügbar.
-        </p>
+        <div className="py-8 text-center">
+          <p className="mb-3 text-sm text-muted">Keine Inline-Vorschau für diesen Dateityp verfügbar.</p>
+          <a href={url} target="_blank" rel="noreferrer" className="text-sm text-accent hover:underline">
+            Datei in neuem Tab öffnen
+          </a>
+        </div>
       )}
     </Modal>
   );
 }
 
 export default function Documents() {
-  const { documents, loading, removeDocument, reload } = useDocuments();
+  const { documents, loading, removeDocument } = useDocuments();
   const [query, setQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState('Alle');
   const [uploadOpen, setUploadOpen] = useState(false);
@@ -147,7 +154,7 @@ export default function Documents() {
     const matchesCategory = activeCategory === 'Alle' || d.category === activeCategory;
     const q = query.trim().toLowerCase();
     const matchesQuery =
-      !q || d.fileName.toLowerCase().includes(q) || d.tags.some((t) => t.toLowerCase().includes(q));
+      !q || d.file_name.toLowerCase().includes(q) || (d.tags || []).some((t) => t.toLowerCase().includes(q));
     return matchesCategory && matchesQuery;
   });
 
@@ -214,14 +221,14 @@ export default function Documents() {
                 <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-lg bg-accent/15 text-accent">
                   <FileText size={20} />
                 </div>
-                <p className="line-clamp-2 text-sm font-medium text-primary">{doc.fileName}</p>
+                <p className="line-clamp-2 text-sm font-medium text-primary">{doc.file_name}</p>
                 <p className="mt-1 text-xs text-muted">
-                  {formatSize(doc.size)} · {new Date(doc.addedAt).toLocaleDateString('de-DE')}
+                  {formatSize(doc.size)} · {new Date(doc.added_at).toLocaleDateString('de-DE')}
                 </p>
               </button>
               <div className="mt-3 flex flex-wrap items-center gap-1.5">
                 <Badge tone="accent">{doc.category}</Badge>
-                {doc.tags.map((t) => (
+                {(doc.tags || []).map((t) => (
                   <Badge key={t}>
                     <Tag size={10} className="mr-1 inline" />
                     {t}
@@ -241,7 +248,7 @@ export default function Documents() {
         </div>
       )}
 
-      <UploadModal open={uploadOpen} onClose={() => setUploadOpen(false)} onUploaded={reload} />
+      <UploadModal open={uploadOpen} onClose={() => setUploadOpen(false)} />
       <PreviewModal doc={previewDoc} onClose={() => setPreviewDoc(null)} />
     </div>
   );

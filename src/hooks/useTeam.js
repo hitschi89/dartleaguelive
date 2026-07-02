@@ -1,43 +1,13 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useAuth } from '../context/AuthContext.jsx';
+import { useSyncedCollection } from './useSyncedCollection.js';
+
+const byName = (a, b) => a.display_name.localeCompare(b.display_name);
 
 export function useTeam() {
-  const [members, setMembers] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const { team } = useAuth();
+  const { items, loading, reload, update, remove } = useSyncedCollection('team_members', team?.id, {
+    sort: byName,
+  });
 
-  const reload = useCallback(async () => {
-    const list = await window.api.team.list();
-    setMembers(list);
-    setLoading(false);
-  }, []);
-
-  useEffect(() => {
-    reload();
-  }, [reload]);
-
-  const addMember = useCallback(
-    async (payload) => {
-      const record = await window.api.team.add(payload);
-      await reload();
-      return record;
-    },
-    [reload]
-  );
-
-  const updateMember = useCallback(
-    async (id, patch) => {
-      await window.api.team.update(id, patch);
-      await reload();
-    },
-    [reload]
-  );
-
-  const removeMember = useCallback(
-    async (id) => {
-      await window.api.team.remove(id);
-      await reload();
-    },
-    [reload]
-  );
-
-  return { members, loading, reload, addMember, updateMember, removeMember };
+  return { members: items, loading, reload, updateMember: update, removeMember: remove };
 }

@@ -19,14 +19,14 @@ function NewBulletinModal({ open, onClose, onCreate, events }) {
     priority: 'info',
     date: new Date().toISOString().slice(0, 16),
     body: '',
-    eventId: '',
+    event_id: '',
   });
 
   const update = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }));
 
   const submit = async () => {
     if (!form.title.trim()) return;
-    await onCreate({ ...form, date: new Date(form.date).toISOString(), eventId: form.eventId || null });
+    await onCreate({ ...form, date: new Date(form.date).toISOString(), event_id: form.event_id || null });
     setForm({
       title: '',
       source: '',
@@ -34,7 +34,7 @@ function NewBulletinModal({ open, onClose, onCreate, events }) {
       priority: 'info',
       date: new Date().toISOString().slice(0, 16),
       body: '',
-      eventId: '',
+      event_id: '',
     });
     onClose();
   };
@@ -70,7 +70,7 @@ function NewBulletinModal({ open, onClose, onCreate, events }) {
         </div>
         <div>
           <label className="mb-1 block text-xs font-medium text-secondary">Event (optional)</label>
-          <Select value={form.eventId} onChange={update('eventId')}>
+          <Select value={form.event_id} onChange={update('event_id')}>
             <option value="">Kein Event</option>
             {events.map((ev) => (
               <option key={ev.id} value={ev.id}>
@@ -145,7 +145,7 @@ export default function Bulletins() {
                   <div className="mb-1 flex flex-wrap items-center gap-2">
                     <Badge tone={PRIORITY_TONE[b.priority] || 'slate'}>{b.priority}</Badge>
                     <Badge>{b.category}</Badge>
-                    {b.eventId && eventTitle(b.eventId) && <Badge tone="blue">{eventTitle(b.eventId)}</Badge>}
+                    {b.event_id && eventTitle(b.event_id) && <Badge tone="blue">{eventTitle(b.event_id)}</Badge>}
                   </div>
                   <p className={`text-sm font-semibold ${b.read ? 'text-secondary' : 'text-primary'}`}>
                     {b.title}

@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { Image, Moon, Sun, Download, Upload, FolderOpen, Check } from 'lucide-react';
+import { Image, Moon, Sun, Upload, Check, LogOut, Lock } from 'lucide-react';
 import { useSettings } from '../context/SettingsContext.jsx';
+import { useAuth } from '../context/AuthContext.jsx';
 import { Card, PageHeader, Button, Input } from '../components/ui.jsx';
 
 const ACCENTS = [
@@ -9,45 +10,62 @@ const ACCENTS = [
 ];
 
 export default function Settings() {
-  const { settings, updateSettings, pickLogo, logoDataUrl } = useSettings();
-  const [teamName, setTeamName] = useState(settings?.teamName || '');
+  const { settings, updateTeam, pickLogo, logoDataUrl, setTheme, isAdmin } = useSettings();
+  const { user, signOut } = useAuth();
+  const [teamName, setTeamName] = useState(settings.teamName || '');
   const [status, setStatus] = useState(null);
-
-  const saveTeamName = async () => {
-    await updateSettings({ teamName });
-    flash('Team-Name gespeichert');
-  };
+  const [error, setError] = useState(null);
 
   const flash = (msg) => {
     setStatus(msg);
+    setError(null);
     setTimeout(() => setStatus(null), 2500);
   };
 
-  const handleExport = async () => {
-    const res = await window.api.settings.exportBackup();
-    if (!res.canceled) flash(`Backup gespeichert: ${res.filePath}`);
-  };
-
-  const handleImport = async () => {
-    const res = await window.api.settings.importBackup();
-    if (!res.canceled) {
-      flash('Backup importiert. App-Neustart empfohlen.');
+  const guarded = (fn) => async (...args) => {
+    try {
+      await fn(...args);
+    } catch (err) {
+      setError(err.message || 'Aktion fehlgeschlagen.');
     }
   };
 
+  const saveTeamName = guarded(async () => {
+    await updateTeam({ name: teamName });
+    flash('Team-Name gespeichert');
+  });
+
+  const handleLogoUpload = guarded(async () => {
+    await pickLogo();
+    flash('Logo aktualisiert');
+  });
+
+  const changeAccent = guarded(async (accent) => {
+    await updateTeam({ accent });
+    flash('Akzentfarbe gespeichert');
+  });
+
   return (
     <div>
-      <PageHeader title="Einstellungen" subtitle="Team-Branding, Design und Datensicherung." />
+      <PageHeader title="Einstellungen" subtitle="Team-Branding, Design und Konto." />
 
       {status && (
         <div className="mb-5 flex items-center gap-2 rounded-lg border border-accent/40 bg-accent/10 px-4 py-2 text-sm text-accent">
           <Check size={15} /> {status}
         </div>
       )}
+      {error && (
+        <div className="mb-5 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm text-red-400">
+          {error}
+        </div>
+      )}
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
         <Card>
-          <h2 className="mb-4 text-sm font-semibold text-primary">Team-Profil</h2>
+          <h2 className="mb-4 flex items-center gap-2 text-sm font-semibold text-primary">
+            Team-Profil
+            {!isAdmin && <Lock size={13} className="text-muted" title="Nur Teamchef kann das bearbeiten" />}
+          </h2>
           <div className="mb-4 flex items-center gap-4">
             {logoDataUrl ? (
               <img src={logoDataUrl} alt="Logo" className="h-16 w-16 rounded-lg object-cover" />
@@ -56,34 +74,36 @@ export default function Settings() {
                 <Image size={22} />
               </div>
             )}
-            <Button variant="secondary" onClick={() => pickLogo().then(() => flash('Logo aktualisiert'))}>
-              <Upload size={15} /> Logo hochladen
-            </Button>
+            {isAdmin && (
+              <Button variant="secondary" onClick={handleLogoUpload}>
+                <Upload size={15} /> Logo hochladen
+              </Button>
+            )}
           </div>
           <label className="mb-1 block text-xs font-medium text-secondary">Team-/Vereinsname</label>
           <div className="flex gap-2">
-            <Input value={teamName} onChange={(e) => setTeamName(e.target.value)} />
-            <Button onClick={saveTeamName}>Speichern</Button>
+            <Input value={teamName} onChange={(e) => setTeamName(e.target.value)} disabled={!isAdmin} />
+            {isAdmin && <Button onClick={saveTeamName}>Speichern</Button>}
           </div>
         </Card>
 
         <Card>
           <h2 className="mb-4 text-sm font-semibold text-primary">Design</h2>
           <div className="mb-4">
-            <p className="mb-2 text-xs font-medium text-secondary">Theme</p>
+            <p className="mb-2 text-xs font-medium text-secondary">Theme (nur auf diesem Gerät)</p>
             <div className="flex gap-2">
               <button
-                onClick={() => updateSettings({ theme: 'dark' })}
+                onClick={() => setTheme('dark')}
                 className={`flex flex-1 items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm ${
-                  settings?.theme === 'dark' ? 'border-accent bg-accent/10 text-accent' : 'border-app text-secondary'
+                  settings.theme === 'dark' ? 'border-accent bg-accent/10 text-accent' : 'border-app text-secondary'
                 }`}
               >
                 <Moon size={15} /> Dunkel
               </button>
               <button
-                onClick={() => updateSettings({ theme: 'light' })}
+                onClick={() => setTheme('light')}
                 className={`flex flex-1 items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm ${
-                  settings?.theme === 'light' ? 'border-accent bg-accent/10 text-accent' : 'border-app text-secondary'
+                  settings.theme === 'light' ? 'border-accent bg-accent/10 text-accent' : 'border-app text-secondary'
                 }`}
               >
                 <Sun size={15} /> Hell
@@ -91,14 +111,18 @@ export default function Settings() {
             </div>
           </div>
           <div>
-            <p className="mb-2 text-xs font-medium text-secondary">Akzentfarbe</p>
+            <p className="mb-2 flex items-center gap-2 text-xs font-medium text-secondary">
+              Akzentfarbe (für das ganze Team)
+              {!isAdmin && <Lock size={12} className="text-muted" />}
+            </p>
             <div className="flex gap-2">
               {ACCENTS.map((a) => (
                 <button
                   key={a.key}
-                  onClick={() => updateSettings({ accent: a.key })}
-                  className={`flex flex-1 items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm ${
-                    settings?.accent === a.key ? 'border-accent bg-accent/10 text-accent' : 'border-app text-secondary'
+                  disabled={!isAdmin}
+                  onClick={() => changeAccent(a.key)}
+                  className={`flex flex-1 items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-50 ${
+                    settings.accent === a.key ? 'border-accent bg-accent/10 text-accent' : 'border-app text-secondary'
                   }`}
                 >
                   <span className="h-3 w-3 rounded-full" style={{ background: a.swatch }} />
@@ -110,31 +134,20 @@ export default function Settings() {
         </Card>
 
         <Card>
-          <h2 className="mb-4 text-sm font-semibold text-primary">Datensicherung</h2>
-          <p className="mb-4 text-sm text-secondary">
-            Exportiere alle Daten (Dokumente-Metadaten, Bulletins, Nachrichten, Termine, Team) als Backup-Datei
-            oder importiere ein bestehendes Backup.
-          </p>
-          <div className="flex flex-wrap gap-2">
-            <Button variant="secondary" onClick={handleExport}>
-              <Download size={15} /> Backup exportieren
-            </Button>
-            <Button variant="secondary" onClick={handleImport}>
-              <Upload size={15} /> Backup importieren
-            </Button>
-            <Button variant="ghost" onClick={() => window.api.settings.openDataFolder()}>
-              <FolderOpen size={15} /> Datenordner öffnen
-            </Button>
-          </div>
+          <h2 className="mb-2 text-sm font-semibold text-primary">Konto</h2>
+          <p className="mb-4 text-sm text-secondary">Angemeldet als {user?.email}</p>
+          <Button variant="secondary" onClick={signOut}>
+            <LogOut size={15} /> Abmelden
+          </Button>
         </Card>
 
         <Card>
           <h2 className="mb-2 text-sm font-semibold text-primary">Über PitWall</h2>
           <p className="text-sm text-secondary">
-            PitWall ist die zentrale Verwaltungsplattform für dein Motorsport-Team. Alle Daten werden ausschließlich
-            lokal auf diesem Gerät gespeichert – ganz ohne Cloud-Pflicht.
+            PitWall ist die zentrale Verwaltungsplattform für dein Motorsport-Team - synchronisiert zwischen Desktop
+            und Mobilgeräten, mit Offline-Cache für unterwegs.
           </p>
-          <p className="mt-2 text-xs text-muted">Version 0.1 (MVP)</p>
+          <p className="mt-2 text-xs text-muted">Version 0.2</p>
         </Card>
       </div>
     </div>

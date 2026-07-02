@@ -1,12 +1,7 @@
 const path = require('path');
 const { app, BrowserWindow } = require('electron');
 
-const documents = require('./ipc/documents');
-const bulletins = require('./ipc/bulletins');
-const messages = require('./ipc/messages');
-const events = require('./ipc/events');
-const team = require('./ipc/team');
-const settings = require('./ipc/settings');
+const native = require('./ipc/native');
 
 const isDev = process.env.NODE_ENV === 'development';
 
@@ -44,17 +39,8 @@ function createWindow() {
   });
 }
 
-function registerIpcHandlers() {
-  documents.register(getMainWindow);
-  bulletins.register(getMainWindow);
-  messages.register(getMainWindow);
-  events.register(getMainWindow);
-  team.register(getMainWindow);
-  settings.register(getMainWindow);
-}
-
 app.whenReady().then(() => {
-  registerIpcHandlers();
+  native.register(getMainWindow);
   createWindow();
 
   app.on('activate', () => {

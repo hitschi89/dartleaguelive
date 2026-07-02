@@ -1,43 +1,27 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useAuth } from '../context/AuthContext.jsx';
+import { useSyncedCollection } from './useSyncedCollection.js';
+import { writeRow } from '../lib/sync.js';
+
+const byStart = (a, b) => new Date(a.start) - new Date(b.start);
 
 export function useEvents() {
-  const [events, setEvents] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const { team, user } = useAuth();
+  const { items, loading, reload, add, update, remove } = useSyncedCollection('events', team?.id, {
+    sort: byStart,
+  });
 
-  const reload = useCallback(async () => {
-    const list = await window.api.events.list();
-    setEvents(list);
-    setLoading(false);
-  }, []);
+  const addEvent = async (payload) => {
+    const event = await add({ ...payload, created_by: user?.id });
+    // Every event gets its own chat channel automatically (Kanäle + Event-Chats).
+    await writeRow('channels', {
+      id: crypto.randomUUID(),
+      team_id: team.id,
+      name: event.title,
+      kind: 'event',
+      event_id: event.id,
+    });
+    return event;
+  };
 
-  useEffect(() => {
-    reload();
-  }, [reload]);
-
-  const addEvent = useCallback(
-    async (payload) => {
-      const record = await window.api.events.add(payload);
-      await reload();
-      return record;
-    },
-    [reload]
-  );
-
-  const updateEvent = useCallback(
-    async (id, patch) => {
-      await window.api.events.update(id, patch);
-      await reload();
-    },
-    [reload]
-  );
-
-  const removeEvent = useCallback(
-    async (id) => {
-      await window.api.events.remove(id);
-      await reload();
-    },
-    [reload]
-  );
-
-  return { events, loading, reload, addEvent, updateEvent, removeEvent };
+  return { events: items, loading, reload, addEvent, updateEvent: update, removeEvent: remove };
 }

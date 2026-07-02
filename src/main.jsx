@@ -11,3 +11,12 @@ ReactDOM.createRoot(document.getElementById('root')).render(
     </HashRouter>
   </React.StrictMode>
 );
+
+// Only register the service worker in the browser/PWA build - Electron's
+// file:// shell doesn't support service workers and doesn't need one since
+// it's already a native app.
+if (!window.api) {
+  import('virtual:pwa-register')
+    .then(({ registerSW }) => registerSW({ immediate: true }))
+    .catch(() => {});
+}

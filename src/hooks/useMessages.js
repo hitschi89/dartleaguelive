@@ -1,38 +1,53 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback } from 'react';
+import { useAuth } from '../context/AuthContext.jsx';
+import { useSyncedCollection } from './useSyncedCollection.js';
+import { exportText as platformExportText, exportPdf as platformExportPdf } from '../lib/platform.js';
+
+const byDateAsc = (a, b) => new Date(a.created_at) - new Date(b.created_at);
+
+function escapeHtml(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
 
 export function useMessages() {
-  const [messages, setMessages] = useState([]);
-  const [loading, setLoading] = useState(true);
-
-  const reload = useCallback(async () => {
-    const list = await window.api.messages.list();
-    setMessages(list);
-    setLoading(false);
-  }, []);
-
-  useEffect(() => {
-    reload();
-  }, [reload]);
+  const { team, membership, user } = useAuth();
+  const { items, loading, reload, add, remove } = useSyncedCollection('messages', team?.id, {
+    sort: byDateAsc,
+  });
 
   const addMessage = useCallback(
-    async (payload) => {
-      const record = await window.api.messages.add(payload);
-      await reload();
-      return record;
-    },
-    [reload]
+    (channelId, text) =>
+      add({
+        channel_id: channelId,
+        author_id: user?.id,
+        author_name: membership?.display_name || user?.email || 'Team',
+        text,
+      }),
+    [add, user, membership]
   );
 
-  const removeMessage = useCallback(
-    async (id) => {
-      await window.api.messages.remove(id);
-      await reload();
-    },
-    [reload]
-  );
+  const exportText = useCallback((messages, title) => {
+    const content = messages
+      .map((m) => `[${new Date(m.created_at).toLocaleString('de-DE')}] ${m.author_name}: ${m.text}`)
+      .join('\n');
+    return platformExportText(content, `${title || 'nachrichten'}.txt`);
+  }, []);
 
-  const exportText = useCallback((payload) => window.api.messages.exportText(payload), []);
-  const exportPdf = useCallback((payload) => window.api.messages.exportPdf(payload), []);
+  const exportPdf = useCallback((messages, title) => {
+    const rowsHtml = messages
+      .map(
+        (m) => `<div style="margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid #ddd;">
+          <div style="font-size:11px;color:#666;">${new Date(m.created_at).toLocaleString('de-DE')} &middot; ${escapeHtml(m.author_name)}</div>
+          <div style="font-size:13px;white-space:pre-wrap;">${escapeHtml(m.text)}</div>
+        </div>`
+      )
+      .join('');
+    return platformExportPdf({ title, rowsHtml, defaultName: `${title || 'nachrichten'}.pdf` });
+  }, []);
 
-  return { messages, loading, reload, addMessage, removeMessage, exportText, exportPdf };
+  return { messages: items, loading, reload, addMessage, removeMessage: remove, exportText, exportPdf };
 }

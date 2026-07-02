@@ -1,53 +1,75 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { useAuth } from './AuthContext.jsx';
+import { supabase } from '../lib/supabaseClient.js';
+import { pickFile } from '../lib/platform.js';
 
 const SettingsContext = createContext(null);
+const THEME_KEY = 'pitwall.theme';
 
+// Team branding (name/logo/accent) is shared team data, stored on the
+// `teams` row in Supabase. Theme (dark/light) is a personal, per-device
+// preference and stays in localStorage - it's not something a teammate on
+// another device should have forced on them.
 export function SettingsProvider({ children }) {
-  const [settings, setSettings] = useState(null);
-  const [logoDataUrl, setLogoDataUrl] = useState(null);
-  const [loading, setLoading] = useState(true);
-
-  const loadLogo = useCallback(async () => {
-    const logo = await window.api.settings.readLogo();
-    setLogoDataUrl(logo ? `data:${logo.mime};base64,${logo.data}` : null);
-  }, []);
-
-  const refresh = useCallback(async () => {
-    const current = await window.api.settings.get();
-    setSettings(current);
-    await loadLogo();
-    setLoading(false);
-  }, [loadLogo]);
+  const { team, role, reloadMembership } = useAuth();
+  const [theme, setThemeState] = useState(() => localStorage.getItem(THEME_KEY) || 'dark');
+  const [logoUrl, setLogoUrl] = useState(null);
 
   useEffect(() => {
-    refresh();
-  }, [refresh]);
-
-  useEffect(() => {
-    if (!settings) return;
     const root = document.documentElement;
-    root.classList.toggle('dark', settings.theme === 'dark');
-    root.setAttribute('data-accent', settings.accent || 'red');
-  }, [settings]);
+    root.classList.toggle('dark', theme === 'dark');
+    localStorage.setItem(THEME_KEY, theme);
+  }, [theme]);
 
-  const updateSettings = useCallback(async (patch) => {
-    const next = await window.api.settings.update(patch);
-    setSettings(next);
-    return next;
-  }, []);
+  useEffect(() => {
+    document.documentElement.setAttribute('data-accent', team?.accent || 'red');
+  }, [team?.accent]);
+
+  useEffect(() => {
+    if (!team?.logo_path) {
+      setLogoUrl(null);
+      return;
+    }
+    supabase.storage
+      .from('team-files')
+      .createSignedUrl(team.logo_path, 3600)
+      .then(({ data }) => setLogoUrl(data?.signedUrl || null));
+  }, [team?.logo_path]);
+
+  const setTheme = useCallback((next) => setThemeState(next), []);
+
+  const updateTeam = useCallback(
+    async (patch) => {
+      const { error } = await supabase.from('teams').update(patch).eq('id', team.id);
+      if (error) throw error;
+      await reloadMembership();
+    },
+    [team, reloadMembership]
+  );
 
   const pickLogo = useCallback(async () => {
-    const next = await window.api.settings.pickLogo();
-    if (next) {
-      setSettings(next);
-      await loadLogo();
-    }
-    return next;
-  }, [loadLogo]);
+    const file = await pickFile({ extensions: ['png', 'jpg', 'jpeg', 'svg', 'gif'] });
+    if (!file) return;
+    const ext = file.name.includes('.') ? file.name.slice(file.name.lastIndexOf('.')) : '';
+    const path = `${team.id}/branding/logo-${crypto.randomUUID()}${ext}`;
+    const { error: uploadError } = await supabase.storage.from('team-files').upload(path, file, {
+      contentType: file.type || 'image/png',
+    });
+    if (uploadError) throw uploadError;
+    await updateTeam({ logo_path: path });
+  }, [team, updateTeam]);
 
   const value = useMemo(
-    () => ({ settings, loading, updateSettings, pickLogo, logoDataUrl, refresh }),
-    [settings, loading, updateSettings, pickLogo, logoDataUrl, refresh]
+    () => ({
+      settings: { teamName: team?.name, accent: team?.accent || 'red', theme },
+      loading: false,
+      isAdmin: role === 'Teamchef',
+      logoDataUrl: logoUrl,
+      setTheme,
+      updateTeam,
+      pickLogo,
+    }),
+    [team, theme, role, logoUrl, setTheme, updateTeam, pickLogo]
   );
 
   return <SettingsContext.Provider value={value}>{children}</SettingsContext.Provider>;
