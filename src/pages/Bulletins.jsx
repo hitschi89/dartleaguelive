@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react';
-import { Megaphone, Plus, Trash2, MailOpen, Mail } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { Megaphone, Plus, Trash2, MailOpen, Mail, Paperclip, FileText } from 'lucide-react';
 import { useBulletins } from '../hooks/useBulletins.js';
 import { useEvents } from '../hooks/useEvents.js';
 import { Card, PageHeader, Button, Input, Textarea, Select, Badge, EmptyState, Modal } from '../components/ui.jsx';
@@ -11,7 +11,7 @@ const FILTERS = [
   { key: 'dringend', label: 'Dringend' },
 ];
 
-function NewBulletinModal({ open, onClose, onCreate, events }) {
+function NewBulletinModal({ open, onClose, onCreate, events, pickAttachment }) {
   const [form, setForm] = useState({
     title: '',
     source: '',
@@ -21,27 +21,54 @@ function NewBulletinModal({ open, onClose, onCreate, events }) {
     body: '',
     event_id: '',
   });
+  const [file, setFile] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
 
   const update = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }));
 
+  const handlePick = async () => {
+    const picked = await pickAttachment();
+    if (picked) setFile(picked);
+  };
+
   const submit = async () => {
     if (!form.title.trim()) return;
-    await onCreate({ ...form, date: new Date(form.date).toISOString(), event_id: form.event_id || null });
-    setForm({
-      title: '',
-      source: '',
-      category: 'Rennleitung',
-      priority: 'info',
-      date: new Date().toISOString().slice(0, 16),
-      body: '',
-      event_id: '',
-    });
-    onClose();
+    setBusy(true);
+    setError(null);
+    try {
+      await onCreate({
+        ...form,
+        date: new Date(form.date).toISOString(),
+        event_id: form.event_id || null,
+        file,
+      });
+      setForm({
+        title: '',
+        source: '',
+        category: 'Rennleitung',
+        priority: 'info',
+        date: new Date().toISOString().slice(0, 16),
+        body: '',
+        event_id: '',
+      });
+      setFile(null);
+      onClose();
+    } catch (err) {
+      setError(err.message || 'Bulletin konnte nicht veröffentlicht werden.');
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
     <Modal open={open} onClose={onClose} title="Neues Bulletin" wide>
       <div className="space-y-4">
+        {error && (
+          <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-400">
+            {error}
+          </div>
+        )}
         <div>
           <label className="mb-1 block text-xs font-medium text-secondary">Titel</label>
           <Input value={form.title} onChange={update('title')} placeholder="z. B. Bulletin Nr. 4 – Boxenausfahrt" />
@@ -83,19 +110,49 @@ function NewBulletinModal({ open, onClose, onCreate, events }) {
           <label className="mb-1 block text-xs font-medium text-secondary">Inhalt</label>
           <Textarea rows={5} value={form.body} onChange={update('body')} />
         </div>
-        <Button className="w-full" onClick={submit}>
-          Bulletin veröffentlichen
+        <div>
+          <label className="mb-1 block text-xs font-medium text-secondary">PDF-Anhang (optional)</label>
+          <Button variant="secondary" onClick={handlePick} className="w-full">
+            <Paperclip size={15} /> {file ? file.name : 'PDF auswählen'}
+          </Button>
+        </div>
+        <Button className="w-full" onClick={submit} disabled={busy}>
+          {busy ? 'Wird veröffentlicht…' : 'Bulletin veröffentlichen'}
         </Button>
       </div>
     </Modal>
   );
 }
 
+function AttachmentModal({ bulletin, onClose, readAttachment }) {
+  const [url, setUrl] = useState(null);
+
+  useEffect(() => {
+    if (!bulletin) return;
+    setUrl(null);
+    readAttachment(bulletin.id).then((res) => setUrl(res?.url || null));
+  }, [bulletin, readAttachment]);
+
+  if (!bulletin) return null;
+
+  return (
+    <Modal open={!!bulletin} onClose={onClose} title={bulletin.attachment_name || 'Anhang'} wide>
+      {!url ? (
+        <p className="py-12 text-center text-sm text-muted">Lade PDF…</p>
+      ) : (
+        <iframe title={bulletin.attachment_name} src={url} className="h-[70vh] w-full rounded-lg border border-app" />
+      )}
+    </Modal>
+  );
+}
+
 export default function Bulletins() {
-  const { bulletins, loading, addBulletin, toggleRead, removeBulletin } = useBulletins();
+  const { bulletins, loading, addBulletin, toggleRead, removeBulletin, pickAttachment, readAttachment } =
+    useBulletins();
   const { events } = useEvents();
   const [filter, setFilter] = useState('alle');
   const [open, setOpen] = useState(false);
+  const [attachmentBulletin, setAttachmentBulletin] = useState(null);
 
   const eventTitle = (id) => events.find((e) => e.id === id)?.title;
 
@@ -151,6 +208,14 @@ export default function Bulletins() {
                     {b.title}
                   </p>
                   {b.body && <p className="mt-1 whitespace-pre-wrap text-sm text-secondary">{b.body}</p>}
+                  {b.attachment_path && (
+                    <button
+                      onClick={() => setAttachmentBulletin(b)}
+                      className="mt-2 flex items-center gap-1.5 rounded-lg bg-card-alt px-2.5 py-1.5 text-xs font-medium text-accent hover:underline"
+                    >
+                      <FileText size={13} /> {b.attachment_name || 'PDF ansehen'}
+                    </button>
+                  )}
                   <p className="mt-2 text-xs text-muted">
                     {new Date(b.date).toLocaleString('de-DE', { dateStyle: 'medium', timeStyle: 'short' })}
                     {b.source ? ` · ${b.source}` : ''}
@@ -178,7 +243,18 @@ export default function Bulletins() {
         </div>
       )}
 
-      <NewBulletinModal open={open} onClose={() => setOpen(false)} onCreate={addBulletin} events={events} />
+      <NewBulletinModal
+        open={open}
+        onClose={() => setOpen(false)}
+        onCreate={addBulletin}
+        events={events}
+        pickAttachment={pickAttachment}
+      />
+      <AttachmentModal
+        bulletin={attachmentBulletin}
+        onClose={() => setAttachmentBulletin(null)}
+        readAttachment={readAttachment}
+      />
     </div>
   );
 }

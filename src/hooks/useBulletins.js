@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useSyncedCollection } from './useSyncedCollection.js';
 import { supabase } from '../lib/supabaseClient.js';
-import { notify } from '../lib/platform.js';
+import { notify, pickFile } from '../lib/platform.js';
 
 const byDateDesc = (a, b) => new Date(b.date) - new Date(a.date);
 
@@ -75,15 +75,53 @@ export function useBulletins() {
     [user]
   );
 
+  const pickAttachment = useCallback(() => pickFile({ extensions: ['pdf'] }), []);
+
+  // Attachments upload straight to Supabase Storage (needs to be online),
+  // same as documents. The bulletin row itself still goes through the
+  // normal offline-friendly path once the upload (if any) has a path.
   const addBulletin = useCallback(
-    async (payload) => {
-      const record = await add({ ...payload, created_by: user?.id });
+    async ({ file, ...payload }) => {
+      let attachment_path = null;
+      let attachment_name = null;
+      if (file) {
+        if (!navigator.onLine) throw new Error('PDF-Anhänge benötigen eine Internetverbindung.');
+        const ext = file.name.includes('.') ? file.name.slice(file.name.lastIndexOf('.')) : '';
+        attachment_path = `${team.id}/bulletins/${crypto.randomUUID()}${ext}`;
+        const { error: uploadError } = await supabase.storage.from('team-files').upload(attachment_path, file, {
+          contentType: file.type || 'application/pdf',
+        });
+        if (uploadError) throw uploadError;
+        attachment_name = file.name;
+      }
+
+      const record = await add({ ...payload, attachment_path, attachment_name, created_by: user?.id });
       if (record.priority === 'dringend') {
         notify(`Dringendes Bulletin: ${record.title}`, record.source ? `Quelle: ${record.source}` : 'Neues wichtiges Bulletin');
       }
       return record;
     },
-    [add, user]
+    [add, user, team]
+  );
+
+  const readAttachment = useCallback(
+    async (id) => {
+      const bulletin = items.find((b) => b.id === id);
+      if (!bulletin?.attachment_path) return null;
+      const { data, error } = await supabase.storage.from('team-files').createSignedUrl(bulletin.attachment_path, 3600);
+      if (error) throw error;
+      return { url: data.signedUrl, fileName: bulletin.attachment_name };
+    },
+    [items]
+  );
+
+  const removeBulletin = useCallback(
+    async (id) => {
+      const bulletin = items.find((b) => b.id === id);
+      await remove(id);
+      if (bulletin?.attachment_path) await supabase.storage.from('team-files').remove([bulletin.attachment_path]);
+    },
+    [items, remove]
   );
 
   const bulletins = useMemo(
@@ -98,6 +136,8 @@ export function useBulletins() {
     addBulletin,
     updateBulletin: update,
     toggleRead,
-    removeBulletin: remove,
+    removeBulletin,
+    pickAttachment,
+    readAttachment,
   };
 }

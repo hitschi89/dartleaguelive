@@ -77,6 +77,8 @@ create table if not exists bulletins (
   date timestamptz not null default now(),
   body text,
   event_id uuid references events(id) on delete set null,
+  attachment_path text,
+  attachment_name text,
   created_by uuid references auth.users(id),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
@@ -158,6 +160,9 @@ end $$;
 alter table channels add column if not exists created_by uuid references auth.users(id);
 alter table channels drop constraint if exists channels_kind_check;
 alter table channels add constraint channels_kind_check check (kind in ('general', 'event', 'custom'));
+
+alter table bulletins add column if not exists attachment_path text;
+alter table bulletins add column if not exists attachment_name text;
 
 -- ---------------------------------------------------------------------------
 -- updated_at maintenance
