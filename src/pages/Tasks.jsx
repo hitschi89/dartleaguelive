@@ -166,6 +166,16 @@ export default function Tasks() {
                         date: new Date(task.due_date).toLocaleString(locale, { dateStyle: 'medium', timeStyle: 'short' }),
                       })}`}
                   </p>
+                  {task.done && task.completed_by_name && (
+                    <p className="mt-1 text-xs text-accent">
+                      {t('tasks.completedBy', {
+                        name: task.completed_by_name,
+                        date: task.completed_at
+                          ? new Date(task.completed_at).toLocaleString(locale, { dateStyle: 'medium', timeStyle: 'short' })
+                          : '',
+                      })}
+                    </p>
+                  )}
                 </div>
                 <button
                   onClick={() => removeTask(task.id)}

@@ -9,13 +9,20 @@ const byDueDate = (a, b) => {
 };
 
 export function useTasks() {
-  const { team, user } = useAuth();
+  const { team, user, membership } = useAuth();
   const { items, loading, reload, add, update, remove } = useSyncedCollection('tasks', team?.id, {
     sort: byDueDate,
   });
 
   const addTask = (payload) => add({ ...payload, created_by: user?.id });
-  const toggleDone = (id, done) => update(id, { done });
+
+  const toggleDone = (id, done) =>
+    update(id, {
+      done,
+      completed_by: done ? user?.id : null,
+      completed_by_name: done ? membership?.display_name || user?.email : null,
+      completed_at: done ? new Date().toISOString() : null,
+    });
 
   return { tasks: items, loading, reload, addTask, updateTask: update, toggleDone, removeTask: remove };
 }

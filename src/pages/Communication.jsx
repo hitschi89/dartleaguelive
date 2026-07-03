@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Hash, Send, Trash2, FileDown, FileText, Plus, Lock } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Hash, Send, Trash2, FileDown, FileText, Plus, Lock, Reply, Image as ImageIcon, X } from 'lucide-react';
 import { useMessages } from '../hooks/useMessages.js';
 import { useChannels } from '../hooks/useChannels.js';
 import { useTeam } from '../hooks/useTeam.js';
@@ -72,14 +72,46 @@ function NewChannelModal({ open, onClose, onCreate, members }) {
   );
 }
 
+function MessageImage({ path, getImageUrl }) {
+  const [url, setUrl] = useState(null);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    getImageUrl(path)
+      .then((u) => {
+        if (!cancelled) setUrl(u);
+      })
+      .catch(() => {
+        if (!cancelled) setFailed(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [path, getImageUrl]);
+
+  if (failed) return null;
+  if (!url) return <div className="mt-2 h-32 w-32 animate-pulse rounded-lg bg-card" />;
+  return (
+    <a href={url} target="_blank" rel="noreferrer">
+      <img src={url} alt="" className="mt-2 max-h-64 max-w-full rounded-lg border border-app object-contain" />
+    </a>
+  );
+}
+
 export default function Communication() {
   const { t, locale } = useLanguage();
-  const { messages, loading, addMessage, removeMessage, exportText, exportPdf } = useMessages();
+  const { messages, loading, addMessage, removeMessage, exportText, exportPdf, pickImage, getImageUrl } = useMessages();
   const { channels, loading: channelsLoading, addCustomChannel } = useChannels();
   const { members } = useTeam();
   const [activeChannel, setActiveChannel] = useState(null);
   const [text, setText] = useState('');
   const [newChannelOpen, setNewChannelOpen] = useState(false);
+  const [replyingTo, setReplyingTo] = useState(null);
+  const [pendingImage, setPendingImage] = useState(null);
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState(null);
+  const bottomRef = useRef(null);
 
   useEffect(() => {
     if (!activeChannel && channels.length > 0) setActiveChannel(channels[0].id);
@@ -90,12 +122,35 @@ export default function Communication() {
     [messages, activeChannel]
   );
 
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ block: 'end' });
+  }, [channelMessages.length, activeChannel]);
+
   const currentChannel = channels.find((c) => c.id === activeChannel);
+  const findMessage = (id) => messages.find((m) => m.id === id);
 
   const handleSend = async () => {
-    if (!text.trim() || !activeChannel) return;
-    await addMessage(activeChannel, text.trim());
-    setText('');
+    if ((!text.trim() && !pendingImage) || !activeChannel) return;
+    setSending(true);
+    setError(null);
+    try {
+      await addMessage(activeChannel, text.trim(), {
+        replyToId: replyingTo?.id || null,
+        imageFile: pendingImage,
+      });
+      setText('');
+      setReplyingTo(null);
+      setPendingImage(null);
+    } catch (err) {
+      setError(err.message || t('communication.imageUploadFailed'));
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const handlePickImage = async () => {
+    const file = await pickImage();
+    if (file) setPendingImage(file);
   };
 
   return (
@@ -158,30 +213,80 @@ export default function Communication() {
             ) : channelMessages.length === 0 ? (
               <EmptyState icon={Hash} title={t('communication.noMessagesYet')} description={t('communication.noMessagesDescription')} />
             ) : (
-              channelMessages.map((m) => (
-                <div key={m.id} className="group flex items-start justify-between gap-3 rounded-lg bg-card-alt p-3">
-                  <div className="min-w-0">
-                    <div className="flex items-baseline gap-2">
-                      <span className="text-sm font-semibold text-primary">{m.author_name}</span>
-                      <span className="text-xs text-muted">
-                        {new Date(m.created_at).toLocaleString(locale, { dateStyle: 'short', timeStyle: 'short' })}
-                      </span>
+              channelMessages.map((m) => {
+                const original = m.reply_to_id ? findMessage(m.reply_to_id) : null;
+                return (
+                  <div key={m.id} className="group flex items-start justify-between gap-3 rounded-lg bg-card-alt p-3">
+                    <div className="min-w-0 flex-1">
+                      {original && (
+                        <div className="mb-1.5 rounded-md border-l-2 border-accent/50 bg-app/40 px-2 py-1 text-xs text-muted">
+                          <span className="font-medium text-secondary">{original.author_name}</span>{' '}
+                          <span className="truncate">{original.text?.slice(0, 80) || '📷'}</span>
+                        </div>
+                      )}
+                      <div className="flex items-baseline gap-2">
+                        <span className="text-sm font-semibold text-primary">{m.author_name}</span>
+                        <span className="text-xs text-muted">
+                          {new Date(m.created_at).toLocaleString(locale, { dateStyle: 'short', timeStyle: 'short' })}
+                        </span>
+                      </div>
+                      {m.text && <p className="mt-1 whitespace-pre-wrap text-sm text-secondary">{m.text}</p>}
+                      {m.image_path && <MessageImage path={m.image_path} getImageUrl={getImageUrl} />}
                     </div>
-                    <p className="mt-1 whitespace-pre-wrap text-sm text-secondary">{m.text}</p>
+                    <div className="flex shrink-0 flex-col items-end gap-2">
+                      <button
+                        onClick={() => setReplyingTo(m)}
+                        className="text-muted opacity-0 transition-opacity hover:text-accent group-hover:opacity-100"
+                        title={t('communication.reply')}
+                      >
+                        <Reply size={14} />
+                      </button>
+                      <button
+                        onClick={() => removeMessage(m.id)}
+                        className="text-muted opacity-0 transition-opacity hover:text-red-400 group-hover:opacity-100"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
                   </div>
-                  <button
-                    onClick={() => removeMessage(m.id)}
-                    className="shrink-0 text-muted opacity-0 transition-opacity hover:text-red-400 group-hover:opacity-100"
-                  >
-                    <Trash2 size={14} />
-                  </button>
-                </div>
-              ))
+                );
+              })
             )}
+            <div ref={bottomRef} />
           </div>
 
           <div className="border-t border-app p-4">
+            {error && (
+              <div className="mb-2 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-400">
+                {error}
+              </div>
+            )}
+            {replyingTo && (
+              <div className="mb-2 flex items-center justify-between rounded-lg bg-card-alt px-3 py-2 text-xs">
+                <span className="truncate text-secondary">
+                  {t('communication.replyingTo', { name: replyingTo.author_name })}: {replyingTo.text?.slice(0, 60) || '📷'}
+                </span>
+                <button onClick={() => setReplyingTo(null)} className="shrink-0 text-muted hover:text-primary">
+                  <X size={13} />
+                </button>
+              </div>
+            )}
+            {pendingImage && (
+              <div className="mb-2 flex items-center justify-between rounded-lg bg-card-alt px-3 py-2 text-xs">
+                <span className="truncate text-secondary">{pendingImage.name}</span>
+                <button onClick={() => setPendingImage(null)} className="shrink-0 text-muted hover:text-primary">
+                  <X size={13} />
+                </button>
+              </div>
+            )}
             <div className="flex gap-2">
+              <button
+                onClick={handlePickImage}
+                className="flex shrink-0 items-center justify-center rounded-lg border border-app px-3 hover-app"
+                title={t('communication.attachImage')}
+              >
+                <ImageIcon size={16} className="text-secondary" />
+              </button>
               <Textarea
                 rows={2}
                 placeholder={t('communication.messagePlaceholder', { channel: currentChannel?.name || '' })}
@@ -194,7 +299,7 @@ export default function Communication() {
                   }
                 }}
               />
-              <Button onClick={handleSend} className="self-end" disabled={!activeChannel}>
+              <Button onClick={handleSend} className="self-end" disabled={!activeChannel || sending}>
                 <Send size={16} />
               </Button>
             </div>

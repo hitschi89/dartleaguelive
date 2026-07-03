@@ -122,6 +122,9 @@ create table if not exists tasks (
   done boolean not null default false,
   notes text,
   visible_roles text[],
+  completed_by uuid references auth.users(id),
+  completed_by_name text,
+  completed_at timestamptz,
   created_by uuid references auth.users(id),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
@@ -135,6 +138,8 @@ create table if not exists messages (
   author_id uuid references auth.users(id),
   author_name text not null default 'Team',
   text text not null,
+  reply_to_id uuid references messages(id) on delete set null,
+  image_path text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   deleted_at timestamptz
@@ -170,6 +175,13 @@ alter table bulletins add column if not exists attachment_name text;
 alter table documents add column if not exists visible_roles text[];
 alter table bulletins add column if not exists visible_roles text[];
 alter table tasks add column if not exists visible_roles text[];
+
+alter table tasks add column if not exists completed_by uuid references auth.users(id);
+alter table tasks add column if not exists completed_by_name text;
+alter table tasks add column if not exists completed_at timestamptz;
+
+alter table messages add column if not exists reply_to_id uuid references messages(id) on delete set null;
+alter table messages add column if not exists image_path text;
 
 -- ---------------------------------------------------------------------------
 -- updated_at maintenance

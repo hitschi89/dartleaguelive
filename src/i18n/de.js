@@ -138,6 +138,10 @@ export default {
     noMessagesYet: 'Noch keine Nachrichten',
     noMessagesDescription: 'Starte die Team-Kommunikation in diesem Kanal.',
     messagePlaceholder: 'Nachricht in #{channel}… (Enter zum Senden, Shift+Enter für neue Zeile)',
+    reply: 'Antworten',
+    replyingTo: 'Antwort an {name}',
+    attachImage: 'Bild anhängen',
+    imageUploadFailed: 'Bild konnte nicht gesendet werden.',
   },
   calendar: {
     title: 'Kalender',
@@ -206,6 +210,7 @@ export default {
     loadingTasks: 'Lade Aufgaben…',
     overdue: 'überfällig',
     dueOn: 'fällig {date}',
+    completedBy: 'Erledigt von {name} · {date}',
   },
   team: {
     title: 'Team & Kontakte',
