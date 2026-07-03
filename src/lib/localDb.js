@@ -1,9 +1,22 @@
 import { openDB } from 'idb';
 
 const DB_NAME = 'pitwall';
-const DB_VERSION = 2; // bumped to add the 'tasks' store for existing browsers
+const DB_VERSION = 3; // bumped to add series/event_schedule_items/checklist_items/event_budget_items stores
 
-export const TABLES = ['team_members', 'documents', 'events', 'bulletins', 'bulletin_reads', 'channels', 'messages', 'tasks'];
+export const TABLES = [
+  'team_members',
+  'documents',
+  'events',
+  'bulletins',
+  'bulletin_reads',
+  'channels',
+  'messages',
+  'tasks',
+  'series',
+  'event_schedule_items',
+  'checklist_items',
+  'event_budget_items',
+];
 
 let dbPromise = null;
 

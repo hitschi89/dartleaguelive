@@ -68,28 +68,28 @@ export function Button({ children, variant = 'primary', className = '', ...props
   );
 }
 
-export function Input(props) {
+export function Input({ className = '', ...props }) {
   return (
     <input
-      className="w-full rounded-lg border border-app bg-card-alt px-3 py-2 text-sm text-primary placeholder:text-muted focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
+      className={`w-full rounded-lg border border-app bg-card-alt px-3 py-2 text-sm text-primary placeholder:text-muted focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent ${className}`}
       {...props}
     />
   );
 }
 
-export function Textarea(props) {
+export function Textarea({ className = '', ...props }) {
   return (
     <textarea
-      className="w-full rounded-lg border border-app bg-card-alt px-3 py-2 text-sm text-primary placeholder:text-muted focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
+      className={`w-full rounded-lg border border-app bg-card-alt px-3 py-2 text-sm text-primary placeholder:text-muted focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent ${className}`}
       {...props}
     />
   );
 }
 
-export function Select(props) {
+export function Select({ className = '', ...props }) {
   return (
     <select
-      className="w-full rounded-lg border border-app bg-card-alt px-3 py-2 text-sm text-primary focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
+      className={`w-full rounded-lg border border-app bg-card-alt px-3 py-2 text-sm text-primary focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent ${className}`}
       {...props}
     />
   );

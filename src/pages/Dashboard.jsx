@@ -84,18 +84,23 @@ export default function Dashboard() {
           ) : (
             <ul className="space-y-3">
               {upcoming.map((event) => (
-                <li key={event.id} className="rounded-lg bg-card-alt p-3">
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="text-sm font-medium text-primary">{event.title}</p>
-                    <Badge tone="accent">{formatCountdown(event.start)}</Badge>
-                  </div>
-                  <p className="mt-1 text-xs text-secondary">
-                    {new Date(event.start).toLocaleString(locale, {
-                      dateStyle: 'medium',
-                      timeStyle: 'short',
-                    })}
-                    {event.location ? ` · ${event.location}` : ''}
-                  </p>
+                <li key={event.id}>
+                  <Link
+                    to={`/kalender/${event.id}`}
+                    className="block rounded-lg bg-card-alt p-3 transition-colors hover:border-accent"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-sm font-medium text-primary">{event.title}</p>
+                      <Badge tone="accent">{formatCountdown(event.start)}</Badge>
+                    </div>
+                    <p className="mt-1 text-xs text-secondary">
+                      {new Date(event.start).toLocaleString(locale, {
+                        dateStyle: 'medium',
+                        timeStyle: 'short',
+                      })}
+                      {event.location ? ` · ${event.location}` : ''}
+                    </p>
+                  </Link>
                 </li>
               ))}
             </ul>

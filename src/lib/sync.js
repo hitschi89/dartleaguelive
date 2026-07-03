@@ -13,7 +13,19 @@ import {
 // Tables kept in sync via the generic outbox/pull engine. bulletin_reads is
 // deliberately excluded - it's a simple per-user marker table without
 // updated_at/soft-delete semantics, handled directly where it's used.
-export const SYNCED_TABLES = ['team_members', 'documents', 'events', 'bulletins', 'channels', 'messages', 'tasks'];
+export const SYNCED_TABLES = [
+  'team_members',
+  'documents',
+  'events',
+  'bulletins',
+  'channels',
+  'messages',
+  'tasks',
+  'series',
+  'event_schedule_items',
+  'checklist_items',
+  'event_budget_items',
+];
 
 const listeners = new Map();
 

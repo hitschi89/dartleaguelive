@@ -1,6 +1,9 @@
 import { useMemo, useState } from 'react';
-import { ChevronLeft, ChevronRight, Plus, Timer, Trash2, Upload, RefreshCw, Check, X as XIcon } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { ChevronLeft, ChevronRight, Plus, Timer, Trash2, Upload, RefreshCw, Check, X as XIcon, Info, Settings2 } from 'lucide-react';
 import { useEvents } from '../hooks/useEvents.js';
+import { useSeries } from '../hooks/useSeries.js';
+import { useTeam } from '../hooks/useTeam.js';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useLanguage } from '../context/LanguageContext.jsx';
 import { supabase } from '../lib/supabaseClient.js';
@@ -33,7 +36,7 @@ function sameDay(a, b) {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 }
 
-function EventModal({ open, onClose, onSave, onDelete, initial }) {
+function EventModal({ open, onClose, onSave, onDelete, onViewDetails, initial, series }) {
   const { t } = useLanguage();
   const TYPE_LABEL = {
     training: t('calendar.types.training'),
@@ -46,6 +49,7 @@ function EventModal({ open, onClose, onSave, onDelete, initial }) {
     initial || {
       title: '',
       type: 'training',
+      series_id: '',
       start: new Date().toISOString().slice(0, 16),
       end: new Date().toISOString().slice(0, 16),
       location: '',
@@ -59,6 +63,7 @@ function EventModal({ open, onClose, onSave, onDelete, initial }) {
     if (!form.title.trim() || !form.start) return;
     await onSave({
       ...form,
+      series_id: form.series_id || null,
       start: new Date(form.start).toISOString(),
       end: new Date(form.end || form.start).toISOString(),
     });
@@ -88,6 +93,17 @@ function EventModal({ open, onClose, onSave, onDelete, initial }) {
             <Input value={form.location} onChange={update('location')} placeholder={t('calendar.locationPlaceholder')} />
           </div>
           <div>
+            <label className="mb-1 block text-xs font-medium text-secondary">{t('calendar.series')}</label>
+            <Select value={form.series_id || ''} onChange={update('series_id')}>
+              <option value="">{t('calendar.noSeries')}</option>
+              {series.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
+              ))}
+            </Select>
+          </div>
+          <div>
             <label className="mb-1 block text-xs font-medium text-secondary">{t('calendar.start')}</label>
             <Input type="datetime-local" value={form.start?.slice(0, 16)} onChange={update('start')} />
           </div>
@@ -104,6 +120,11 @@ function EventModal({ open, onClose, onSave, onDelete, initial }) {
           <Button className="flex-1" onClick={submit}>
             {t('common.save')}
           </Button>
+          {initial?.id && (
+            <Button variant="secondary" onClick={() => onViewDetails(initial.id)}>
+              <Info size={15} /> {t('calendar.details')}
+            </Button>
+          )}
           {initial?.id && (
             <Button
               variant="danger"
@@ -273,14 +294,110 @@ function ImportModal({ open, onClose, onImported }) {
   );
 }
 
+function SeriesManageModal({ open, onClose }) {
+  const { t } = useLanguage();
+  const { series, addSeries, removeSeries, membersBySeries, setSeriesMembers } = useSeries();
+  const { members } = useTeam();
+  const [name, setName] = useState('');
+  const [season, setSeason] = useState('');
+  const [expanded, setExpanded] = useState(null);
+
+  const submit = async () => {
+    if (!name.trim()) return;
+    await addSeries({ name: name.trim(), season: season.trim() || null });
+    setName('');
+    setSeason('');
+  };
+
+  const toggleMember = async (seriesId, teamMemberId) => {
+    const current = membersBySeries[seriesId] || [];
+    const next = current.includes(teamMemberId)
+      ? current.filter((id) => id !== teamMemberId)
+      : [...current, teamMemberId];
+    await setSeriesMembers(seriesId, next);
+  };
+
+  return (
+    <Modal open={open} onClose={onClose} title={t('calendar.seriesManageTitle')} wide>
+      <div className="space-y-4">
+        <div className="flex gap-2">
+          <Input placeholder={t('calendar.seriesNewName')} value={name} onChange={(e) => setName(e.target.value)} />
+          <Input
+            placeholder={t('calendar.seriesNewSeason')}
+            value={season}
+            onChange={(e) => setSeason(e.target.value)}
+            className="w-32 shrink-0"
+          />
+          <Button onClick={submit}>
+            <Plus size={15} />
+          </Button>
+        </div>
+
+        {series.length === 0 ? (
+          <p className="text-sm text-muted">{t('calendar.seriesNone')}</p>
+        ) : (
+          <ul className="space-y-2">
+            {series.map((s) => (
+              <li key={s.id} className="rounded-lg border border-app p-3">
+                <div className="flex items-center justify-between">
+                  <button
+                    onClick={() => setExpanded(expanded === s.id ? null : s.id)}
+                    className="flex items-center gap-2 text-sm font-medium text-primary"
+                  >
+                    <Badge tone={s.color}>{s.name}</Badge>
+                    {s.season && <span className="text-xs text-muted">{s.season}</span>}
+                  </button>
+                  <button onClick={() => removeSeries(s.id)} className="text-muted hover:text-red-400">
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+                {expanded === s.id && (
+                  <div className="mt-3 border-t border-app pt-3">
+                    <p className="mb-2 text-xs font-medium text-secondary">{t('calendar.seriesMembers')}</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {members.map((m) => {
+                        const active = (membersBySeries[s.id] || []).includes(m.id);
+                        return (
+                          <button
+                            key={m.id}
+                            onClick={() => toggleMember(s.id, m.id)}
+                            className={`rounded-full border px-2.5 py-1 text-xs font-medium ${
+                              active ? 'border-accent bg-accent/15 text-accent' : 'border-app text-secondary hover-app'
+                            }`}
+                          >
+                            {m.display_name}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
 export default function Calendar() {
   const { t, locale } = useLanguage();
   const { team } = useAuth();
-  const { events, addEvent, updateEvent, removeEvent, importEvents } = useEvents();
+  const navigate = useNavigate();
+  const { events: allEvents, addEvent, updateEvent, removeEvent, importEvents } = useEvents();
+  const { series } = useSeries();
   const [importOpen, setImportOpen] = useState(false);
+  const [seriesManageOpen, setSeriesManageOpen] = useState(false);
+  const [seriesFilter, setSeriesFilter] = useState('all');
   const [cursor, setCursor] = useState(new Date());
   const [view, setView] = useState('month');
   const [modalState, setModalState] = useState(null);
+
+  const events = useMemo(
+    () => (seriesFilter === 'all' ? allEvents : allEvents.filter((e) => e.series_id === seriesFilter)),
+    [allEvents, seriesFilter]
+  );
 
   const TYPE_LABEL = {
     training: t('calendar.types.training'),
@@ -322,7 +439,7 @@ export default function Calendar() {
 
   const eventsOn = (day) => events.filter((e) => sameDay(new Date(e.start), day));
 
-  const navigate = (delta) => {
+  const changeCursor = (delta) => {
     const d = new Date(cursor);
     if (view === 'month') d.setMonth(d.getMonth() + delta);
     else d.setDate(d.getDate() + delta * 7);
@@ -354,7 +471,20 @@ export default function Calendar() {
         title={t('calendar.title')}
         subtitle={t('calendar.subtitle')}
         action={
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
+            <div className="w-44">
+              <Select value={seriesFilter} onChange={(e) => setSeriesFilter(e.target.value)}>
+                <option value="all">{t('calendar.allSeries')}</option>
+                {series.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+              </Select>
+            </div>
+            <Button variant="secondary" onClick={() => setSeriesManageOpen(true)}>
+              <Settings2 size={15} /> {t('calendar.manageSeries')}
+            </Button>
             {team?.calendar_ics_url && (
               <Button variant="secondary" onClick={resyncFeed}>
                 <RefreshCw size={15} /> {t('calendar.updateCalendar')}
@@ -389,7 +519,7 @@ export default function Calendar() {
 
       <div className="mb-4 flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <button onClick={() => navigate(-1)} className="rounded-lg border border-app p-2 hover-app">
+          <button onClick={() => changeCursor(-1)} className="rounded-lg border border-app p-2 hover-app">
             <ChevronLeft size={16} />
           </button>
           <p className="min-w-[160px] text-center text-sm font-semibold text-primary">
@@ -397,7 +527,7 @@ export default function Calendar() {
               ? cursor.toLocaleDateString(locale, { month: 'long', year: 'numeric' })
               : `${t('calendar.calendarWeek')} ${Math.ceil((startOfWeek(cursor).getDate()) / 7)} · ${startOfWeek(cursor).toLocaleDateString(locale)}`}
           </p>
-          <button onClick={() => navigate(1)} className="rounded-lg border border-app p-2 hover-app">
+          <button onClick={() => changeCursor(1)} className="rounded-lg border border-app p-2 hover-app">
             <ChevronRight size={16} />
           </button>
           <button
@@ -473,15 +603,18 @@ export default function Calendar() {
           open={!!modalState}
           onClose={() => setModalState(null)}
           initial={modalState}
+          series={series}
           onSave={async (data) => {
             if (data.id) await updateEvent(data.id, data);
             else await addEvent(data);
           }}
           onDelete={removeEvent}
+          onViewDetails={(id) => navigate(`/kalender/${id}`)}
         />
       )}
 
       <ImportModal open={importOpen} onClose={() => setImportOpen(false)} />
+      <SeriesManageModal open={seriesManageOpen} onClose={() => setSeriesManageOpen(false)} />
     </div>
   );
 }

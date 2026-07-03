@@ -35,15 +35,37 @@ create table if not exists team_members (
   unique (team_id, user_id)
 );
 
+create table if not exists series (
+  id uuid primary key default gen_random_uuid(),
+  team_id uuid not null references teams(id) on delete cascade,
+  name text not null,
+  season text,
+  color text not null default 'red' check (color in ('red', 'orange', 'blue', 'green', 'amber', 'slate')),
+  created_by uuid references auth.users(id),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  deleted_at timestamptz
+);
+
+create table if not exists series_members (
+  series_id uuid not null references series(id) on delete cascade,
+  team_member_id uuid not null references team_members(id) on delete cascade,
+  added_at timestamptz not null default now(),
+  primary key (series_id, team_member_id)
+);
+
 create table if not exists events (
   id uuid primary key default gen_random_uuid(),
   team_id uuid not null references teams(id) on delete cascade,
+  series_id uuid references series(id) on delete set null,
   title text not null,
   type text not null default 'other' check (type in ('training', 'qualifying', 'race', 'briefing', 'other')),
   start timestamptz not null,
   "end" timestamptz,
   location text,
   notes text,
+  travel_notes text,
+  accommodation_notes text,
   source text not null default 'manual' check (source in ('manual', 'import')),
   external_uid text,
   created_by uuid references auth.users(id),
@@ -51,6 +73,62 @@ create table if not exists events (
   updated_at timestamptz not null default now(),
   deleted_at timestamptz,
   unique (team_id, external_uid)
+);
+
+create table if not exists event_rsvps (
+  event_id uuid not null references events(id) on delete cascade,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  status text not null default 'maybe' check (status in ('yes', 'no', 'maybe')),
+  responded_at timestamptz not null default now(),
+  primary key (event_id, user_id)
+);
+
+create table if not exists event_schedule_items (
+  id uuid primary key default gen_random_uuid(),
+  team_id uuid not null references teams(id) on delete cascade,
+  event_id uuid not null references events(id) on delete cascade,
+  time timestamptz not null,
+  title text not null,
+  notes text,
+  created_by uuid references auth.users(id),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  deleted_at timestamptz
+);
+
+create table if not exists checklist_items (
+  id uuid primary key default gen_random_uuid(),
+  team_id uuid not null references teams(id) on delete cascade,
+  event_id uuid references events(id) on delete cascade,
+  title text not null,
+  done boolean not null default false,
+  position integer not null default 0,
+  created_by uuid references auth.users(id),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  deleted_at timestamptz
+);
+
+create table if not exists event_budget_items (
+  id uuid primary key default gen_random_uuid(),
+  team_id uuid not null references teams(id) on delete cascade,
+  event_id uuid not null references events(id) on delete cascade,
+  label text not null,
+  amount numeric(10, 2) not null default 0,
+  currency text not null default 'EUR',
+  category text not null default 'Sonstiges',
+  created_by uuid references auth.users(id),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  deleted_at timestamptz
+);
+
+create table if not exists member_emergency_info (
+  team_member_id uuid primary key references team_members(id) on delete cascade,
+  contact_name text,
+  contact_phone text,
+  medical_notes text,
+  updated_at timestamptz not null default now()
 );
 
 create table if not exists documents (
@@ -183,6 +261,10 @@ alter table tasks add column if not exists completed_at timestamptz;
 alter table messages add column if not exists reply_to_id uuid references messages(id) on delete set null;
 alter table messages add column if not exists image_path text;
 
+alter table events add column if not exists series_id uuid references series(id) on delete set null;
+alter table events add column if not exists travel_notes text;
+alter table events add column if not exists accommodation_notes text;
+
 -- ---------------------------------------------------------------------------
 -- updated_at maintenance
 -- ---------------------------------------------------------------------------
@@ -197,7 +279,10 @@ $$ language plpgsql;
 do $$
 declare t text;
 begin
-  foreach t in array array['teams', 'team_members', 'events', 'documents', 'bulletins', 'messages', 'tasks']
+  foreach t in array array[
+    'teams', 'team_members', 'events', 'documents', 'bulletins', 'messages', 'tasks',
+    'series', 'event_schedule_items', 'checklist_items', 'event_budget_items'
+  ]
   loop
     execute format(
       'drop trigger if exists set_updated_at on %I; create trigger set_updated_at before update on %I for each row execute function set_updated_at();',
@@ -257,6 +342,17 @@ language sql security definer stable as $$
   );
 $$;
 
+-- Emergency contact info is sensitive: only the member themselves or a
+-- Teamchef of their team may read/edit it.
+create or replace function can_manage_member_info(target_member_id uuid) returns boolean
+language sql security definer stable as $$
+  select exists (
+    select 1 from team_members tm
+    where tm.id = target_member_id
+      and (tm.user_id = auth.uid() or is_team_admin(tm.team_id))
+  );
+$$;
+
 -- ---------------------------------------------------------------------------
 -- Row Level Security
 -- ---------------------------------------------------------------------------
@@ -271,6 +367,13 @@ alter table channels enable row level security;
 alter table channel_members enable row level security;
 alter table messages enable row level security;
 alter table tasks enable row level security;
+alter table series enable row level security;
+alter table series_members enable row level security;
+alter table event_rsvps enable row level security;
+alter table event_schedule_items enable row level security;
+alter table checklist_items enable row level security;
+alter table event_budget_items enable row level security;
+alter table member_emergency_info enable row level security;
 
 drop policy if exists teams_select on teams;
 create policy teams_select on teams for select
@@ -429,6 +532,52 @@ drop policy if exists tasks_delete on tasks;
 create policy tasks_delete on tasks for delete
   using (team_id in (select my_team_ids()));
 
+drop policy if exists series_all on series;
+create policy series_all on series for all
+  using (team_id in (select my_team_ids()))
+  with check (team_id in (select my_team_ids()));
+
+drop policy if exists series_members_all on series_members;
+create policy series_members_all on series_members for all
+  using (series_id in (select id from series where team_id in (select my_team_ids())))
+  with check (series_id in (select id from series where team_id in (select my_team_ids())));
+
+drop policy if exists event_rsvps_select on event_rsvps;
+create policy event_rsvps_select on event_rsvps for select
+  using (event_id in (select id from events where team_id in (select my_team_ids())));
+
+drop policy if exists event_rsvps_insert on event_rsvps;
+create policy event_rsvps_insert on event_rsvps for insert
+  with check (user_id = auth.uid() and event_id in (select id from events where team_id in (select my_team_ids())));
+
+drop policy if exists event_rsvps_update on event_rsvps;
+create policy event_rsvps_update on event_rsvps for update
+  using (user_id = auth.uid());
+
+drop policy if exists event_rsvps_delete on event_rsvps;
+create policy event_rsvps_delete on event_rsvps for delete
+  using (user_id = auth.uid());
+
+drop policy if exists event_schedule_items_all on event_schedule_items;
+create policy event_schedule_items_all on event_schedule_items for all
+  using (team_id in (select my_team_ids()))
+  with check (team_id in (select my_team_ids()));
+
+drop policy if exists checklist_items_all on checklist_items;
+create policy checklist_items_all on checklist_items for all
+  using (team_id in (select my_team_ids()))
+  with check (team_id in (select my_team_ids()));
+
+drop policy if exists event_budget_items_all on event_budget_items;
+create policy event_budget_items_all on event_budget_items for all
+  using (team_id in (select my_team_ids()))
+  with check (team_id in (select my_team_ids()));
+
+drop policy if exists member_emergency_info_all on member_emergency_info;
+create policy member_emergency_info_all on member_emergency_info for all
+  using (can_manage_member_info(team_member_id))
+  with check (can_manage_member_info(team_member_id));
+
 -- ---------------------------------------------------------------------------
 -- Storage (documents + team logos)
 -- ---------------------------------------------------------------------------
@@ -460,7 +609,11 @@ create policy team_files_delete on storage.objects for delete
 do $$
 declare t text;
 begin
-  foreach t in array array['team_members', 'events', 'documents', 'bulletins', 'channels', 'channel_members', 'messages', 'tasks']
+  foreach t in array array[
+    'team_members', 'events', 'documents', 'bulletins', 'channels', 'channel_members', 'messages', 'tasks',
+    'series', 'series_members', 'event_rsvps', 'event_schedule_items', 'checklist_items', 'event_budget_items',
+    'member_emergency_info'
+  ]
   loop
     begin
       execute format('alter publication supabase_realtime add table %I', t);
