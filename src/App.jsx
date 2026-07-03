@@ -4,6 +4,7 @@ import { Menu, Flag } from 'lucide-react';
 import Sidebar from './components/Sidebar.jsx';
 import { AuthProvider, useAuth } from './context/AuthContext.jsx';
 import { SettingsProvider, useSettings } from './context/SettingsContext.jsx';
+import { LanguageProvider, useLanguage } from './context/LanguageContext.jsx';
 import SetupNotice from './pages/auth/SetupNotice.jsx';
 import AuthScreen from './pages/auth/AuthScreen.jsx';
 import TeamSetup from './pages/auth/TeamSetup.jsx';
@@ -24,7 +25,7 @@ function MobileTopBar({ onOpenMenu }) {
         <Menu size={22} />
       </button>
       {logoDataUrl ? (
-        <img src={logoDataUrl} alt="Team-Logo" className="h-7 w-7 rounded-md object-cover" />
+        <img src={logoDataUrl} alt="Team logo" className="h-7 w-7 rounded-md object-cover" />
       ) : (
         <div className="flex h-7 w-7 items-center justify-center rounded-md bg-accent/15 text-accent">
           <Flag size={14} />
@@ -66,15 +67,12 @@ function Shell() {
 
 function Gate() {
   const { configured, loading, user, team } = useAuth();
+  const { t } = useLanguage();
 
   if (!configured) return <SetupNotice />;
 
   if (loading) {
-    return (
-      <div className="flex h-screen items-center justify-center bg-app text-muted">
-        Lade PitWall…
-      </div>
-    );
+    return <div className="flex h-screen items-center justify-center bg-app text-muted">{t('app.loading')}</div>;
   }
 
   if (!user) return <AuthScreen />;
@@ -84,8 +82,10 @@ function Gate() {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <Gate />
-    </AuthProvider>
+    <LanguageProvider>
+      <AuthProvider>
+        <Gate />
+      </AuthProvider>
+    </LanguageProvider>
   );
 }

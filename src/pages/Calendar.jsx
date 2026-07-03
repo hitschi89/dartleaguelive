@@ -2,13 +2,12 @@ import { useMemo, useState } from 'react';
 import { ChevronLeft, ChevronRight, Plus, Timer, Trash2, Upload, RefreshCw, Check, X as XIcon } from 'lucide-react';
 import { useEvents } from '../hooks/useEvents.js';
 import { useAuth } from '../context/AuthContext.jsx';
+import { useLanguage } from '../context/LanguageContext.jsx';
 import { supabase } from '../lib/supabaseClient.js';
 import { parseCalendarText } from '../lib/calendarImport.js';
 import { Card, PageHeader, Button, Input, Textarea, Select, Badge, Modal } from '../components/ui.jsx';
 
-const TYPE_LABEL = { training: 'Training', qualifying: 'Qualifying', race: 'Rennen', briefing: 'Briefing', other: 'Sonstiges' };
 const TYPE_TONE = { training: 'blue', qualifying: 'amber', race: 'red', briefing: 'green', other: 'slate' };
-const WEEKDAYS = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
 
 function startOfWeek(date) {
   const d = new Date(date);
@@ -34,18 +33,15 @@ function sameDay(a, b) {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 }
 
-function formatCountdown(dateStr) {
-  const diffMs = new Date(dateStr).getTime() - Date.now();
-  if (diffMs <= 0) return 'jetzt';
-  const days = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-  const hours = Math.floor((diffMs / (1000 * 60 * 60)) % 24);
-  const minutes = Math.floor((diffMs / (1000 * 60)) % 60);
-  if (days > 0) return `${days}T ${hours}h`;
-  if (hours > 0) return `${hours}h ${minutes}min`;
-  return `${minutes}min`;
-}
-
 function EventModal({ open, onClose, onSave, onDelete, initial }) {
+  const { t } = useLanguage();
+  const TYPE_LABEL = {
+    training: t('calendar.types.training'),
+    qualifying: t('calendar.types.qualifying'),
+    race: t('calendar.types.race'),
+    briefing: t('calendar.types.briefing'),
+    other: t('calendar.types.other'),
+  };
   const [form, setForm] = useState(
     initial || {
       title: '',
@@ -70,15 +66,15 @@ function EventModal({ open, onClose, onSave, onDelete, initial }) {
   };
 
   return (
-    <Modal open={open} onClose={onClose} title={initial?.id ? 'Termin bearbeiten' : 'Neuer Termin'} wide>
+    <Modal open={open} onClose={onClose} title={initial?.id ? t('calendar.editEvent') : t('calendar.newEventModalTitle')} wide>
       <div className="space-y-4">
         <div>
-          <label className="mb-1 block text-xs font-medium text-secondary">Titel</label>
-          <Input value={form.title} onChange={update('title')} placeholder="z. B. Freies Training 1" />
+          <label className="mb-1 block text-xs font-medium text-secondary">{t('calendar.fieldTitle')}</label>
+          <Input value={form.title} onChange={update('title')} placeholder={t('calendar.titlePlaceholder')} />
         </div>
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="mb-1 block text-xs font-medium text-secondary">Typ</label>
+            <label className="mb-1 block text-xs font-medium text-secondary">{t('calendar.type')}</label>
             <Select value={form.type} onChange={update('type')}>
               {Object.entries(TYPE_LABEL).map(([k, v]) => (
                 <option key={k} value={k}>
@@ -88,25 +84,25 @@ function EventModal({ open, onClose, onSave, onDelete, initial }) {
             </Select>
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium text-secondary">Ort</label>
-            <Input value={form.location} onChange={update('location')} placeholder="Strecke / Raum" />
+            <label className="mb-1 block text-xs font-medium text-secondary">{t('calendar.location')}</label>
+            <Input value={form.location} onChange={update('location')} placeholder={t('calendar.locationPlaceholder')} />
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium text-secondary">Start</label>
+            <label className="mb-1 block text-xs font-medium text-secondary">{t('calendar.start')}</label>
             <Input type="datetime-local" value={form.start?.slice(0, 16)} onChange={update('start')} />
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium text-secondary">Ende</label>
+            <label className="mb-1 block text-xs font-medium text-secondary">{t('calendar.end')}</label>
             <Input type="datetime-local" value={form.end?.slice(0, 16)} onChange={update('end')} />
           </div>
         </div>
         <div>
-          <label className="mb-1 block text-xs font-medium text-secondary">Notizen</label>
+          <label className="mb-1 block text-xs font-medium text-secondary">{t('calendar.notes')}</label>
           <Textarea rows={3} value={form.notes} onChange={update('notes')} />
         </div>
         <div className="flex gap-2">
           <Button className="flex-1" onClick={submit}>
-            Speichern
+            {t('common.save')}
           </Button>
           {initial?.id && (
             <Button
@@ -126,6 +122,7 @@ function EventModal({ open, onClose, onSave, onDelete, initial }) {
 }
 
 function ImportModal({ open, onClose, onImported }) {
+  const { t } = useLanguage();
   const { team } = useAuth();
   const { importEvents } = useEvents();
   const [icsUrl, setIcsUrl] = useState(team?.calendar_ics_url || '');
@@ -137,7 +134,7 @@ function ImportModal({ open, onClose, onImported }) {
   const runParse = (text) => {
     const parsed = parseCalendarText(text);
     if (!parsed.length) {
-      setError('Es konnten keine Termine erkannt werden. Bitte den Kalendertext direkt einfügen.');
+      setError(t('calendar.noEventsDetected'));
       setPreview(null);
       return;
     }
@@ -156,9 +153,7 @@ function ImportModal({ open, onClose, onImported }) {
       runParse(text);
       supabase.from('teams').update({ calendar_ics_url: icsUrl.trim() }).eq('id', team.id).then(() => {});
     } catch (err) {
-      setError(
-        `Konnte den Link nicht direkt abrufen (${err.message}). Manche Seiten blockieren automatische Abrufe (CORS) - bitte stattdessen den Kalendertext kopieren und unten einfügen.`
-      );
+      setError(t('calendar.fetchFailed', { error: err.message }));
     } finally {
       setBusy(false);
     }
@@ -181,20 +176,18 @@ function ImportModal({ open, onClose, onImported }) {
       setPasteText('');
       onClose();
     } catch (err) {
-      setError(err.message || 'Import fehlgeschlagen.');
+      setError(err.message || t('calendar.importFailed'));
     } finally {
       setBusy(false);
     }
   };
 
   return (
-    <Modal open={open} onClose={onClose} title="Kalender importieren" wide>
+    <Modal open={open} onClose={onClose} title={t('calendar.importModalTitle')} wide>
       {!preview ? (
         <div className="space-y-5">
           <div>
-            <label className="mb-1 block text-xs font-medium text-secondary">
-              iCal/ICS-Abo-Link (falls vorhanden)
-            </label>
+            <label className="mb-1 block text-xs font-medium text-secondary">{t('calendar.icsUrlLabel')}</label>
             <div className="flex gap-2">
               <Input
                 value={icsUrl}
@@ -202,25 +195,23 @@ function ImportModal({ open, onClose, onImported }) {
                 placeholder="https://.../calendar.ics"
               />
               <Button onClick={fetchIcsUrl} disabled={busy || !icsUrl.trim()}>
-                Abrufen
+                {t('calendar.fetch')}
               </Button>
             </div>
           </div>
 
-          <div className="text-center text-xs text-muted">oder</div>
+          <div className="text-center text-xs text-muted">{t('calendar.or')}</div>
 
           <div>
-            <label className="mb-1 block text-xs font-medium text-secondary">
-              Kalendertext einfügen (z. B. von der Webseite der Rennserie kopiert)
-            </label>
+            <label className="mb-1 block text-xs font-medium text-secondary">{t('calendar.pasteLabel')}</label>
             <Textarea
               rows={8}
               value={pasteText}
               onChange={(e) => setPasteText(e.target.value)}
-              placeholder="Text mit Terminen hier einfügen…"
+              placeholder={t('calendar.pastePlaceholder')}
             />
             <Button className="mt-2 w-full" onClick={() => runParse(pasteText)} disabled={!pasteText.trim()}>
-              <Upload size={15} /> Termine erkennen
+              <Upload size={15} /> {t('calendar.detectEvents')}
             </Button>
           </div>
 
@@ -232,9 +223,7 @@ function ImportModal({ open, onClose, onImported }) {
         </div>
       ) : (
         <div className="space-y-4">
-          <p className="text-sm text-secondary">
-            {preview.length} Termin(e) erkannt - bitte prüfen, anpassen und bestätigen:
-          </p>
+          <p className="text-sm text-secondary">{t('calendar.eventsDetected', { count: preview.length })}</p>
           <div className="max-h-96 space-y-2 overflow-y-auto">
             {preview.map((ev) => (
               <div
@@ -272,10 +261,10 @@ function ImportModal({ open, onClose, onImported }) {
           )}
           <div className="flex gap-2">
             <Button variant="secondary" onClick={() => setPreview(null)}>
-              <XIcon size={15} /> Zurück
+              <XIcon size={15} /> {t('common.back')}
             </Button>
             <Button className="flex-1" onClick={confirmImport} disabled={busy}>
-              {busy ? 'Importiere…' : `${preview.filter((e) => e.include).length} Termin(e) importieren`}
+              {busy ? t('calendar.importing') : t('calendar.importNTasks', { count: preview.filter((e) => e.include).length })}
             </Button>
           </div>
         </div>
@@ -285,12 +274,33 @@ function ImportModal({ open, onClose, onImported }) {
 }
 
 export default function Calendar() {
+  const { t, locale } = useLanguage();
   const { team } = useAuth();
   const { events, addEvent, updateEvent, removeEvent, importEvents } = useEvents();
   const [importOpen, setImportOpen] = useState(false);
   const [cursor, setCursor] = useState(new Date());
   const [view, setView] = useState('month');
   const [modalState, setModalState] = useState(null);
+
+  const TYPE_LABEL = {
+    training: t('calendar.types.training'),
+    qualifying: t('calendar.types.qualifying'),
+    race: t('calendar.types.race'),
+    briefing: t('calendar.types.briefing'),
+    other: t('calendar.types.other'),
+  };
+  const WEEKDAYS = t('calendar.weekdays');
+
+  const formatCountdown = (dateStr) => {
+    const diffMs = new Date(dateStr).getTime() - Date.now();
+    if (diffMs <= 0) return t('countdown.now');
+    const days = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+    const hours = Math.floor((diffMs / (1000 * 60 * 60)) % 24);
+    const minutes = Math.floor((diffMs / (1000 * 60)) % 60);
+    if (days > 0) return t('countdown.daysHours', { days, hours });
+    if (hours > 0) return t('countdown.hoursMinutes', { hours, minutes });
+    return t('countdown.minutes', { minutes });
+  };
 
   const nextEvent = useMemo(
     () =>
@@ -334,27 +344,27 @@ export default function Calendar() {
       const parsed = parseCalendarText(text);
       await importEvents(parsed);
     } catch (err) {
-      alert(`Aktualisierung fehlgeschlagen: ${err.message}`);
+      alert(t('calendar.resyncFailed', { error: err.message }));
     }
   };
 
   return (
     <div>
       <PageHeader
-        title="Kalender"
-        subtitle="Trainings, Qualifyings, Rennen und Briefings im Blick."
+        title={t('calendar.title')}
+        subtitle={t('calendar.subtitle')}
         action={
           <div className="flex gap-2">
             {team?.calendar_ics_url && (
               <Button variant="secondary" onClick={resyncFeed}>
-                <RefreshCw size={15} /> Kalender aktualisieren
+                <RefreshCw size={15} /> {t('calendar.updateCalendar')}
               </Button>
             )}
             <Button variant="secondary" onClick={() => setImportOpen(true)}>
-              <Upload size={16} /> Kalender importieren
+              <Upload size={16} /> {t('calendar.importCalendar')}
             </Button>
             <Button onClick={() => openNewForDay(new Date())}>
-              <Plus size={16} /> Neuer Termin
+              <Plus size={16} /> {t('calendar.newEvent')}
             </Button>
           </div>
         }
@@ -367,13 +377,13 @@ export default function Calendar() {
               <Timer size={18} />
             </div>
             <div>
-              <p className="text-sm font-medium text-primary">Nächster Termin: {nextEvent.title}</p>
+              <p className="text-sm font-medium text-primary">{t('calendar.nextEvent')}: {nextEvent.title}</p>
               <p className="text-xs text-secondary">
-                {new Date(nextEvent.start).toLocaleString('de-DE', { dateStyle: 'medium', timeStyle: 'short' })}
+                {new Date(nextEvent.start).toLocaleString(locale, { dateStyle: 'medium', timeStyle: 'short' })}
               </p>
             </div>
           </div>
-          <Badge tone="accent">Countdown: {formatCountdown(nextEvent.start)}</Badge>
+          <Badge tone="accent">{t('calendar.countdownLabel')}: {formatCountdown(nextEvent.start)}</Badge>
         </Card>
       )}
 
@@ -384,8 +394,8 @@ export default function Calendar() {
           </button>
           <p className="min-w-[160px] text-center text-sm font-semibold text-primary">
             {view === 'month'
-              ? cursor.toLocaleDateString('de-DE', { month: 'long', year: 'numeric' })
-              : `KW ${Math.ceil((startOfWeek(cursor).getDate()) / 7)} · ${startOfWeek(cursor).toLocaleDateString('de-DE')}`}
+              ? cursor.toLocaleDateString(locale, { month: 'long', year: 'numeric' })
+              : `${t('calendar.calendarWeek')} ${Math.ceil((startOfWeek(cursor).getDate()) / 7)} · ${startOfWeek(cursor).toLocaleDateString(locale)}`}
           </p>
           <button onClick={() => navigate(1)} className="rounded-lg border border-app p-2 hover-app">
             <ChevronRight size={16} />
@@ -394,7 +404,7 @@ export default function Calendar() {
             onClick={() => setCursor(new Date())}
             className="ml-2 rounded-lg border border-app px-3 py-1.5 text-xs text-secondary hover-app"
           >
-            Heute
+            {t('calendar.today')}
           </button>
         </div>
         <div className="flex gap-1 rounded-lg border border-app p-1">
@@ -406,7 +416,7 @@ export default function Calendar() {
                 view === v ? 'bg-accent/15 text-accent' : 'text-secondary'
               }`}
             >
-              {v === 'month' ? 'Monat' : 'Woche'}
+              {v === 'month' ? t('calendar.month') : t('calendar.week')}
             </button>
           ))}
         </div>
@@ -450,7 +460,7 @@ export default function Calendar() {
                   </button>
                 ))}
                 {view === 'month' && dayEvents.length > 3 && (
-                  <p className="text-[10px] text-muted">+{dayEvents.length - 3} mehr</p>
+                  <p className="text-[10px] text-muted">{t('calendar.moreEvents', { count: dayEvents.length - 3 })}</p>
                 )}
               </div>
             </div>

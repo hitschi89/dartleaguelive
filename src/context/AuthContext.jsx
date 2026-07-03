@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { supabase, supabaseConfigured } from '../lib/supabaseClient.js';
 import { startSync } from '../lib/sync.js';
+import { useLanguage } from './LanguageContext.jsx';
 
 export const AuthContext = createContext(null);
 
@@ -16,6 +17,7 @@ async function fetchMembership(userId) {
 }
 
 export function AuthProvider({ children }) {
+  const { t } = useLanguage();
   const [session, setSession] = useState(undefined); // undefined = not loaded yet, null = no session
   const [membership, setMembership] = useState(undefined);
   const [membershipLoading, setMembershipLoading] = useState(false);
@@ -110,7 +112,7 @@ export function AuthProvider({ children }) {
         code: inviteCode.trim(),
       });
       if (lookupError) throw lookupError;
-      if (!found || found.length === 0) throw new Error('Ungültiger Einladungscode.');
+      if (!found || found.length === 0) throw new Error(t('auth.invalidInviteCode'));
       const team = found[0];
 
       const { error: memberError } = await supabase.from('team_members').insert({
@@ -125,7 +127,7 @@ export function AuthProvider({ children }) {
       await reloadMembership(userId);
       return team;
     },
-    [session, reloadMembership]
+    [session, reloadMembership, t]
   );
 
   const value = useMemo(

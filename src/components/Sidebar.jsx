@@ -12,20 +12,22 @@ import {
   X,
 } from 'lucide-react';
 import { useSettings } from '../context/SettingsContext.jsx';
+import { useLanguage } from '../context/LanguageContext.jsx';
 
 const NAV_ITEMS = [
-  { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
-  { to: '/dokumente', label: 'Dokumente', icon: FileText },
-  { to: '/bulletins', label: 'Bulletins', icon: Megaphone },
-  { to: '/kommunikation', label: 'Kommunikation', icon: MessageSquare },
-  { to: '/kalender', label: 'Kalender', icon: CalendarDays },
-  { to: '/aufgaben', label: 'Aufgaben', icon: ListChecks },
-  { to: '/team', label: 'Team', icon: Users },
-  { to: '/einstellungen', label: 'Einstellungen', icon: SettingsIcon },
+  { to: '/', key: 'dashboard', icon: LayoutDashboard, end: true },
+  { to: '/dokumente', key: 'documents', icon: FileText },
+  { to: '/bulletins', key: 'bulletins', icon: Megaphone },
+  { to: '/kommunikation', key: 'communication', icon: MessageSquare },
+  { to: '/kalender', key: 'calendar', icon: CalendarDays },
+  { to: '/aufgaben', key: 'tasks', icon: ListChecks },
+  { to: '/team', key: 'team', icon: Users },
+  { to: '/einstellungen', key: 'settings', icon: SettingsIcon },
 ];
 
 export default function Sidebar({ open = false, onClose }) {
   const { settings, logoDataUrl } = useSettings();
+  const { t } = useLanguage();
 
   return (
     <>
@@ -39,7 +41,7 @@ export default function Sidebar({ open = false, onClose }) {
       >
         <div className="flex items-center gap-3 px-5 py-5">
           {logoDataUrl ? (
-            <img src={logoDataUrl} alt="Team-Logo" className="h-9 w-9 rounded-md object-cover" />
+            <img src={logoDataUrl} alt="Team logo" className="h-9 w-9 rounded-md object-cover" />
           ) : (
             <div className="flex h-9 w-9 items-center justify-center rounded-md bg-accent/15 text-accent">
               <Flag size={18} />
@@ -49,7 +51,7 @@ export default function Sidebar({ open = false, onClose }) {
             <p className="truncate text-sm font-semibold text-primary">
               {settings?.teamName || 'PitWall'}
             </p>
-            <p className="text-[11px] uppercase tracking-wider text-muted">Team Control</p>
+            <p className="text-[11px] uppercase tracking-wider text-muted">{t('app.tagline')}</p>
           </div>
           <button onClick={onClose} className="text-muted hover:text-primary lg:hidden">
             <X size={18} />
@@ -57,7 +59,7 @@ export default function Sidebar({ open = false, onClose }) {
         </div>
 
         <nav className="mt-2 flex-1 space-y-1 px-3">
-          {NAV_ITEMS.map(({ to, label, icon: Icon, end }) => (
+          {NAV_ITEMS.map(({ to, key, icon: Icon, end }) => (
             <NavLink
               key={to}
               to={to}
@@ -70,12 +72,12 @@ export default function Sidebar({ open = false, onClose }) {
               }
             >
               <Icon size={18} strokeWidth={2} />
-              {label}
+              {t(`nav.${key}`)}
             </NavLink>
           ))}
         </nav>
 
-        <div className="px-5 py-4 text-[11px] text-muted">PitWall &middot; v0.2</div>
+        <div className="px-5 py-4 text-[11px] text-muted">{t('app.footer')}</div>
       </aside>
     </>
   );

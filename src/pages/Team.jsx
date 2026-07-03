@@ -2,12 +2,12 @@ import { useState } from 'react';
 import { Users, Trash2, Mail, Phone, Pencil, Copy, Check } from 'lucide-react';
 import { useTeam } from '../hooks/useTeam.js';
 import { useAuth } from '../context/AuthContext.jsx';
+import { useLanguage } from '../context/LanguageContext.jsx';
 import { Card, PageHeader, Button, Input, Textarea, Select, Badge, EmptyState, Modal } from '../components/ui.jsx';
-
-const ROLES = ['Teamchef', 'Fahrer', 'Ingenieur', 'Mechaniker', 'Strategie', 'Sonstiges'];
-const ROLE_TONE = { Teamchef: 'accent', Fahrer: 'red', Ingenieur: 'blue', Mechaniker: 'amber', Strategie: 'green', Sonstiges: 'slate' };
+import { ROLES, ROLE_TONE } from '../lib/roles.js';
 
 function MemberModal({ open, onClose, onSave, onDelete, initial, canEditRole, canDelete }) {
+  const { t, tRole } = useLanguage();
   const [form, setForm] = useState(initial);
   const update = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }));
 
@@ -18,39 +18,39 @@ function MemberModal({ open, onClose, onSave, onDelete, initial, canEditRole, ca
   };
 
   return (
-    <Modal open={open} onClose={onClose} title="Kontakt bearbeiten">
+    <Modal open={open} onClose={onClose} title={t('team.editModalTitle')}>
       <div className="space-y-4">
         <div>
-          <label className="mb-1 block text-xs font-medium text-secondary">Name</label>
+          <label className="mb-1 block text-xs font-medium text-secondary">{t('team.name')}</label>
           <Input value={form.display_name} onChange={update('display_name')} />
         </div>
         <div>
-          <label className="mb-1 block text-xs font-medium text-secondary">Rolle</label>
+          <label className="mb-1 block text-xs font-medium text-secondary">{t('team.role')}</label>
           <Select value={form.role} onChange={update('role')} disabled={!canEditRole}>
             {ROLES.map((r) => (
               <option key={r} value={r}>
-                {r}
+                {tRole(r)}
               </option>
             ))}
           </Select>
         </div>
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="mb-1 block text-xs font-medium text-secondary">E-Mail</label>
+            <label className="mb-1 block text-xs font-medium text-secondary">{t('team.email')}</label>
             <Input type="email" value={form.email || ''} onChange={update('email')} />
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium text-secondary">Telefon</label>
+            <label className="mb-1 block text-xs font-medium text-secondary">{t('team.phone')}</label>
             <Input value={form.phone || ''} onChange={update('phone')} />
           </div>
         </div>
         <div>
-          <label className="mb-1 block text-xs font-medium text-secondary">Notizen</label>
+          <label className="mb-1 block text-xs font-medium text-secondary">{t('team.notes')}</label>
           <Textarea rows={3} value={form.notes || ''} onChange={update('notes')} />
         </div>
         <div className="flex gap-2">
           <Button className="flex-1" onClick={submit}>
-            Speichern
+            {t('common.save')}
           </Button>
           {canDelete && (
             <Button
@@ -70,6 +70,7 @@ function MemberModal({ open, onClose, onSave, onDelete, initial, canEditRole, ca
 }
 
 export default function Team() {
+  const { t, tRole } = useLanguage();
   const { members, loading, updateMember, removeMember } = useTeam();
   const { team, user, role } = useAuth();
   const [modalState, setModalState] = useState(null);
@@ -84,12 +85,12 @@ export default function Team() {
 
   return (
     <div>
-      <PageHeader title="Team & Kontakte" subtitle="Fahrer, Ingenieure, Teamchefs und weitere Ansprechpartner." />
+      <PageHeader title={t('team.title')} subtitle={t('team.subtitle')} />
 
       <Card className="mb-5 flex flex-wrap items-center justify-between gap-3">
         <div>
-          <p className="text-sm font-medium text-primary">Einladungscode für {team?.name}</p>
-          <p className="text-xs text-secondary">Teile diesen Code, damit neue Mitglieder eurem Team beitreten können.</p>
+          <p className="text-sm font-medium text-primary">{t('team.inviteCodeTitle', { team: team?.name })}</p>
+          <p className="text-xs text-secondary">{t('team.inviteCodeSubtitle')}</p>
         </div>
         <div className="flex items-center gap-2">
           <code className="rounded-lg border border-app bg-card-alt px-3 py-1.5 text-sm text-accent">
@@ -102,9 +103,9 @@ export default function Team() {
       </Card>
 
       {loading ? (
-        <p className="text-sm text-muted">Lade Team…</p>
+        <p className="text-sm text-muted">{t('team.loadingTeam')}</p>
       ) : members.length === 0 ? (
-        <EmptyState icon={Users} title="Noch keine Teammitglieder" />
+        <EmptyState icon={Users} title={t('team.noMembers')} />
       ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {members.map((m) => {
@@ -116,9 +117,9 @@ export default function Team() {
                   <div>
                     <p className="text-sm font-semibold text-primary">
                       {m.display_name}
-                      {isSelf && <span className="ml-1 text-xs text-muted">(du)</span>}
+                      {isSelf && <span className="ml-1 text-xs text-muted">{t('team.you')}</span>}
                     </p>
-                    <Badge tone={ROLE_TONE[m.role] || 'slate'}>{m.role}</Badge>
+                    <Badge tone={ROLE_TONE[m.role] || 'slate'}>{tRole(m.role)}</Badge>
                   </div>
                   {canEdit && (
                     <button onClick={() => setModalState(m)} className="text-muted hover:text-accent">

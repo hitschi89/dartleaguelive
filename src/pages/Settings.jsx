@@ -1,17 +1,24 @@
 import { useState } from 'react';
-import { Image, Moon, Sun, Upload, Check, LogOut, Lock } from 'lucide-react';
+import { Image, Moon, Sun, Upload, Check, LogOut, Lock, Globe } from 'lucide-react';
 import { useSettings } from '../context/SettingsContext.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
+import { useLanguage } from '../context/LanguageContext.jsx';
 import { Card, PageHeader, Button, Input } from '../components/ui.jsx';
 
 const ACCENTS = [
-  { key: 'red', label: 'Rot', swatch: '#ef4444' },
-  { key: 'orange', label: 'Orange', swatch: '#f97316' },
+  { key: 'red', labelKey: 'settings.accentRed', swatch: '#ef4444' },
+  { key: 'orange', labelKey: 'settings.accentOrange', swatch: '#f97316' },
+];
+
+const LANGUAGES = [
+  { key: 'de', label: 'Deutsch' },
+  { key: 'en', label: 'English' },
 ];
 
 export default function Settings() {
   const { settings, updateTeam, pickLogo, logoDataUrl, setTheme, isAdmin } = useSettings();
   const { user, signOut } = useAuth();
+  const { t, language, setLanguage } = useLanguage();
   const [teamName, setTeamName] = useState(settings.teamName || '');
   const [status, setStatus] = useState(null);
   const [error, setError] = useState(null);
@@ -26,28 +33,28 @@ export default function Settings() {
     try {
       await fn(...args);
     } catch (err) {
-      setError(err.message || 'Aktion fehlgeschlagen.');
+      setError(err.message || t('settings.actionFailed'));
     }
   };
 
   const saveTeamName = guarded(async () => {
     await updateTeam({ name: teamName });
-    flash('Team-Name gespeichert');
+    flash(t('settings.teamNameSaved'));
   });
 
   const handleLogoUpload = guarded(async () => {
     await pickLogo();
-    flash('Logo aktualisiert');
+    flash(t('settings.logoUpdated'));
   });
 
   const changeAccent = guarded(async (accent) => {
     await updateTeam({ accent });
-    flash('Akzentfarbe gespeichert');
+    flash(t('settings.accentSaved'));
   });
 
   return (
     <div>
-      <PageHeader title="Einstellungen" subtitle="Team-Branding, Design und Konto." />
+      <PageHeader title={t('settings.title')} subtitle={t('settings.subtitle')} />
 
       {status && (
         <div className="mb-5 flex items-center gap-2 rounded-lg border border-accent/40 bg-accent/10 px-4 py-2 text-sm text-accent">
@@ -63,8 +70,8 @@ export default function Settings() {
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
         <Card>
           <h2 className="mb-4 flex items-center gap-2 text-sm font-semibold text-primary">
-            Team-Profil
-            {!isAdmin && <Lock size={13} className="text-muted" title="Nur Teamchef kann das bearbeiten" />}
+            {t('settings.teamProfile')}
+            {!isAdmin && <Lock size={13} className="text-muted" title={t('settings.adminOnlyHint')} />}
           </h2>
           <div className="mb-4 flex items-center gap-4">
             {logoDataUrl ? (
@@ -76,21 +83,21 @@ export default function Settings() {
             )}
             {isAdmin && (
               <Button variant="secondary" onClick={handleLogoUpload}>
-                <Upload size={15} /> Logo hochladen
+                <Upload size={15} /> {t('settings.uploadLogo')}
               </Button>
             )}
           </div>
-          <label className="mb-1 block text-xs font-medium text-secondary">Team-/Vereinsname</label>
+          <label className="mb-1 block text-xs font-medium text-secondary">{t('settings.teamName')}</label>
           <div className="flex gap-2">
             <Input value={teamName} onChange={(e) => setTeamName(e.target.value)} disabled={!isAdmin} />
-            {isAdmin && <Button onClick={saveTeamName}>Speichern</Button>}
+            {isAdmin && <Button onClick={saveTeamName}>{t('common.save')}</Button>}
           </div>
         </Card>
 
         <Card>
-          <h2 className="mb-4 text-sm font-semibold text-primary">Design</h2>
+          <h2 className="mb-4 text-sm font-semibold text-primary">{t('settings.design')}</h2>
           <div className="mb-4">
-            <p className="mb-2 text-xs font-medium text-secondary">Theme (nur auf diesem Gerät)</p>
+            <p className="mb-2 text-xs font-medium text-secondary">{t('settings.themeDeviceOnly')}</p>
             <div className="flex gap-2">
               <button
                 onClick={() => setTheme('dark')}
@@ -98,7 +105,7 @@ export default function Settings() {
                   settings.theme === 'dark' ? 'border-accent bg-accent/10 text-accent' : 'border-app text-secondary'
                 }`}
               >
-                <Moon size={15} /> Dunkel
+                <Moon size={15} /> {t('settings.themeDark')}
               </button>
               <button
                 onClick={() => setTheme('light')}
@@ -106,13 +113,13 @@ export default function Settings() {
                   settings.theme === 'light' ? 'border-accent bg-accent/10 text-accent' : 'border-app text-secondary'
                 }`}
               >
-                <Sun size={15} /> Hell
+                <Sun size={15} /> {t('settings.themeLight')}
               </button>
             </div>
           </div>
           <div>
             <p className="mb-2 flex items-center gap-2 text-xs font-medium text-secondary">
-              Akzentfarbe (für das ganze Team)
+              {t('settings.accentForTeam')}
               {!isAdmin && <Lock size={12} className="text-muted" />}
             </p>
             <div className="flex gap-2">
@@ -126,7 +133,7 @@ export default function Settings() {
                   }`}
                 >
                   <span className="h-3 w-3 rounded-full" style={{ background: a.swatch }} />
-                  {a.label}
+                  {t(a.labelKey)}
                 </button>
               ))}
             </div>
@@ -134,20 +141,37 @@ export default function Settings() {
         </Card>
 
         <Card>
-          <h2 className="mb-2 text-sm font-semibold text-primary">Konto</h2>
-          <p className="mb-4 text-sm text-secondary">Angemeldet als {user?.email}</p>
+          <h2 className="mb-2 flex items-center gap-2 text-sm font-semibold text-primary">
+            <Globe size={15} /> {t('settings.language')}
+          </h2>
+          <p className="mb-3 text-sm text-secondary">{t('settings.languageDescription')}</p>
+          <div className="flex gap-2">
+            {LANGUAGES.map((l) => (
+              <button
+                key={l.key}
+                onClick={() => setLanguage(l.key)}
+                className={`flex flex-1 items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm ${
+                  language === l.key ? 'border-accent bg-accent/10 text-accent' : 'border-app text-secondary'
+                }`}
+              >
+                {l.label}
+              </button>
+            ))}
+          </div>
+        </Card>
+
+        <Card>
+          <h2 className="mb-2 text-sm font-semibold text-primary">{t('settings.account')}</h2>
+          <p className="mb-4 text-sm text-secondary">{t('settings.loggedInAs', { email: user?.email })}</p>
           <Button variant="secondary" onClick={signOut}>
-            <LogOut size={15} /> Abmelden
+            <LogOut size={15} /> {t('common.signOut')}
           </Button>
         </Card>
 
         <Card>
-          <h2 className="mb-2 text-sm font-semibold text-primary">Über PitWall</h2>
-          <p className="text-sm text-secondary">
-            PitWall ist die zentrale Verwaltungsplattform für dein Motorsport-Team - synchronisiert zwischen Desktop
-            und Mobilgeräten, mit Offline-Cache für unterwegs.
-          </p>
-          <p className="mt-2 text-xs text-muted">Version 0.2</p>
+          <h2 className="mb-2 text-sm font-semibold text-primary">{t('settings.about')}</h2>
+          <p className="text-sm text-secondary">{t('settings.aboutText')}</p>
+          <p className="mt-2 text-xs text-muted">{t('settings.version')}</p>
         </Card>
       </div>
     </div>

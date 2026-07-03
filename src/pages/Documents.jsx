@@ -1,16 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
-import { FileText, Upload, Search, Trash2, Tag } from 'lucide-react';
+import { FileText, Upload, Search, Trash2, Tag, Lock } from 'lucide-react';
 import { useDocuments } from '../hooks/useDocuments.js';
-import { Card, PageHeader, Button, Input, EmptyState, Badge, Modal } from '../components/ui.jsx';
+import { ROLES } from '../lib/roles.js';
+import { useLanguage } from '../context/LanguageContext.jsx';
+import { Card, PageHeader, Button, Input, EmptyState, Badge, Modal, RoleVisibilityPicker } from '../components/ui.jsx';
 
-const SUGGESTED_CATEGORIES = [
-  'Technisches Reglement',
-  'Sportliches Reglement',
-  'Streckenpläne',
-  'Bulletins',
-  'Verträge',
-  'Sonstiges',
-];
+const ALL_CATEGORY = '__all__';
 
 function formatSize(bytes) {
   if (bytes < 1024) return `${bytes} B`;
@@ -19,10 +14,13 @@ function formatSize(bytes) {
 }
 
 function UploadModal({ open, onClose }) {
+  const { t } = useLanguage();
+  const suggestedCategories = t('documents.suggestedCategories');
   const { pickFiles, addDocument } = useDocuments();
   const [picked, setPicked] = useState([]);
-  const [category, setCategory] = useState('Technisches Reglement');
+  const [category, setCategory] = useState(suggestedCategories[0]);
   const [tags, setTags] = useState('');
+  const [visibleRoles, setVisibleRoles] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
 
@@ -37,24 +35,25 @@ function UploadModal({ open, onClose }) {
     setError(null);
     const tagList = tags
       .split(',')
-      .map((t) => t.trim())
+      .map((tg) => tg.trim())
       .filter(Boolean);
     try {
       for (const file of picked) {
-        await addDocument({ file, category, tags: tagList });
+        await addDocument({ file, category, tags: tagList, visibleRoles });
       }
       setPicked([]);
       setTags('');
+      setVisibleRoles(null);
       onClose();
     } catch (err) {
-      setError(err.message || 'Upload fehlgeschlagen.');
+      setError(err.message || t('documents.uploadFailed'));
     } finally {
       setBusy(false);
     }
   };
 
   return (
-    <Modal open={open} onClose={onClose} title="Dokumente hochladen">
+    <Modal open={open} onClose={onClose} title={t('documents.uploadModalTitle')}>
       <div className="space-y-4">
         {error && (
           <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-400">
@@ -63,7 +62,7 @@ function UploadModal({ open, onClose }) {
         )}
         <div>
           <Button variant="secondary" onClick={handlePick} className="w-full">
-            <Upload size={16} /> Datei auswählen
+            <Upload size={16} /> {t('documents.pickFile')}
           </Button>
           {picked.length > 0 && (
             <ul className="mt-3 space-y-1 text-sm text-secondary">
@@ -78,26 +77,29 @@ function UploadModal({ open, onClose }) {
         </div>
 
         <div>
-          <label className="mb-1 block text-xs font-medium text-secondary">Kategorie</label>
+          <label className="mb-1 block text-xs font-medium text-secondary">{t('documents.category')}</label>
           <Input list="categories" value={category} onChange={(e) => setCategory(e.target.value)} />
           <datalist id="categories">
-            {SUGGESTED_CATEGORIES.map((c) => (
+            {suggestedCategories.map((c) => (
               <option key={c} value={c} />
             ))}
           </datalist>
         </div>
 
         <div>
-          <label className="mb-1 block text-xs font-medium text-secondary">Tags (kommagetrennt)</label>
-          <Input
-            placeholder="z. B. Motor, Reifen, 2026"
-            value={tags}
-            onChange={(e) => setTags(e.target.value)}
-          />
+          <label className="mb-1 block text-xs font-medium text-secondary">{t('documents.tags')}</label>
+          <Input placeholder={t('documents.tagsPlaceholder')} value={tags} onChange={(e) => setTags(e.target.value)} />
         </div>
 
+        <RoleVisibilityPicker
+          label={t('common.visibleForRoles')}
+          roles={ROLES}
+          value={visibleRoles}
+          onChange={setVisibleRoles}
+        />
+
         <Button className="w-full" disabled={!picked.length || busy} onClick={handleSubmit}>
-          {busy ? 'Wird hochgeladen…' : 'Dokument hinzufügen'}
+          {busy ? t('documents.uploading') : t('documents.addDocument')}
         </Button>
       </div>
     </Modal>
@@ -105,6 +107,7 @@ function UploadModal({ open, onClose }) {
 }
 
 function PreviewModal({ doc, onClose }) {
+  const { t } = useLanguage();
   const { readDocument } = useDocuments();
   const [url, setUrl] = useState(null);
 
@@ -121,16 +124,16 @@ function PreviewModal({ doc, onClose }) {
   return (
     <Modal open={!!doc} onClose={onClose} title={doc.file_name} wide>
       {!url ? (
-        <p className="py-12 text-center text-sm text-muted">Lade Vorschau…</p>
+        <p className="py-12 text-center text-sm text-muted">{t('documents.loadingPreview')}</p>
       ) : isPdf ? (
         <iframe title={doc.file_name} src={url} className="h-[70vh] w-full rounded-lg border border-app" />
       ) : isImage ? (
         <img src={url} alt={doc.file_name} className="max-h-[70vh] w-full rounded-lg object-contain" />
       ) : (
         <div className="py-8 text-center">
-          <p className="mb-3 text-sm text-muted">Keine Inline-Vorschau für diesen Dateityp verfügbar.</p>
+          <p className="mb-3 text-sm text-muted">{t('documents.noPreview')}</p>
           <a href={url} target="_blank" rel="noreferrer" className="text-sm text-accent hover:underline">
-            Datei in neuem Tab öffnen
+            {t('documents.openInNewTab')}
           </a>
         </div>
       )}
@@ -139,33 +142,34 @@ function PreviewModal({ doc, onClose }) {
 }
 
 export default function Documents() {
+  const { t, tRole, locale } = useLanguage();
   const { documents, loading, removeDocument } = useDocuments();
   const [query, setQuery] = useState('');
-  const [activeCategory, setActiveCategory] = useState('Alle');
+  const [activeCategory, setActiveCategory] = useState(ALL_CATEGORY);
   const [uploadOpen, setUploadOpen] = useState(false);
   const [previewDoc, setPreviewDoc] = useState(null);
 
   const categories = useMemo(
-    () => ['Alle', ...Array.from(new Set(documents.map((d) => d.category)))],
+    () => [ALL_CATEGORY, ...Array.from(new Set(documents.map((d) => d.category)))],
     [documents]
   );
 
   const filtered = documents.filter((d) => {
-    const matchesCategory = activeCategory === 'Alle' || d.category === activeCategory;
+    const matchesCategory = activeCategory === ALL_CATEGORY || d.category === activeCategory;
     const q = query.trim().toLowerCase();
     const matchesQuery =
-      !q || d.file_name.toLowerCase().includes(q) || (d.tags || []).some((t) => t.toLowerCase().includes(q));
+      !q || d.file_name.toLowerCase().includes(q) || (d.tags || []).some((tag) => tag.toLowerCase().includes(q));
     return matchesCategory && matchesQuery;
   });
 
   return (
     <div>
       <PageHeader
-        title="Dokumente"
-        subtitle="Reglements, technische Unterlagen und Streckenpläne an einem Ort."
+        title={t('documents.title')}
+        subtitle={t('documents.subtitle')}
         action={
           <Button onClick={() => setUploadOpen(true)}>
-            <Upload size={16} /> Hochladen
+            <Upload size={16} /> {t('documents.upload')}
           </Button>
         }
       />
@@ -175,7 +179,7 @@ export default function Documents() {
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
           <Input
             className="pl-9"
-            placeholder="Suche nach Dateiname oder Tag…"
+            placeholder={t('documents.searchPlaceholder')}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
           />
@@ -191,22 +195,22 @@ export default function Documents() {
                   : 'border-app text-secondary hover-app'
               }`}
             >
-              {cat}
+              {cat === ALL_CATEGORY ? t('common.all') : cat}
             </button>
           ))}
         </div>
       </div>
 
       {loading ? (
-        <p className="text-sm text-muted">Lade Dokumente…</p>
+        <p className="text-sm text-muted">{t('documents.loadingDocuments')}</p>
       ) : filtered.length === 0 ? (
         <EmptyState
           icon={FileText}
-          title="Keine Dokumente gefunden"
-          description="Lade Reglements, technische Unterlagen oder Streckenpläne hoch."
+          title={t('documents.noDocumentsFound')}
+          description={t('documents.noDocumentsDescription')}
           action={
             <Button onClick={() => setUploadOpen(true)}>
-              <Upload size={16} /> Dokument hochladen
+              <Upload size={16} /> {t('documents.uploadDocument')}
             </Button>
           }
         />
@@ -223,24 +227,30 @@ export default function Documents() {
                 </div>
                 <p className="line-clamp-2 text-sm font-medium text-primary">{doc.file_name}</p>
                 <p className="mt-1 text-xs text-muted">
-                  {formatSize(doc.size)} · {new Date(doc.added_at).toLocaleDateString('de-DE')}
+                  {formatSize(doc.size)} · {new Date(doc.added_at).toLocaleDateString(locale)}
                 </p>
               </button>
               <div className="mt-3 flex flex-wrap items-center gap-1.5">
                 <Badge tone="accent">{doc.category}</Badge>
-                {(doc.tags || []).map((t) => (
-                  <Badge key={t}>
+                {(doc.tags || []).map((tag) => (
+                  <Badge key={tag}>
                     <Tag size={10} className="mr-1 inline" />
-                    {t}
+                    {tag}
                   </Badge>
                 ))}
+                {doc.visible_roles && doc.visible_roles.length > 0 && (
+                  <Badge tone="amber">
+                    <Lock size={10} className="mr-1 inline" />
+                    {doc.visible_roles.map(tRole).join(', ')}
+                  </Badge>
+                )}
               </div>
               <div className="mt-4 flex justify-end border-t border-app pt-3">
                 <button
                   onClick={() => removeDocument(doc.id)}
                   className="flex items-center gap-1 text-xs text-muted hover:text-red-400"
                 >
-                  <Trash2 size={13} /> Löschen
+                  <Trash2 size={13} /> {t('common.delete')}
                 </button>
               </div>
             </Card>

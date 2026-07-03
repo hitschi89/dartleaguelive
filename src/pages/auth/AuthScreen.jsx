@@ -1,10 +1,12 @@
 import { useState } from 'react';
 import { Flag, Loader2 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext.jsx';
+import { useLanguage } from '../../context/LanguageContext.jsx';
 import { Button, Input } from '../../components/ui.jsx';
 
 export default function AuthScreen() {
   const { signIn, signUp } = useAuth();
+  const { t } = useLanguage();
   const [mode, setMode] = useState('signin');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -22,11 +24,11 @@ export default function AuthScreen() {
         await signIn(email, password);
       } else {
         await signUp(email, password);
-        setInfo('Konto erstellt. Falls E-Mail-Bestätigung aktiviert ist, bitte Posteingang prüfen, dann einloggen.');
+        setInfo(t('auth.signUpSuccess'));
         setMode('signin');
       }
     } catch (err) {
-      setError(err.message || 'Etwas ist schiefgelaufen.');
+      setError(err.message || t('auth.genericError'));
     } finally {
       setBusy(false);
     }
@@ -41,7 +43,7 @@ export default function AuthScreen() {
           </div>
           <h1 className="font-display text-xl font-semibold text-primary">PitWall</h1>
           <p className="mt-1 text-sm text-secondary">
-            {mode === 'signin' ? 'Melde dich bei deinem Team an' : 'Erstelle einen neuen Account'}
+            {mode === 'signin' ? t('auth.signInSubtitle') : t('auth.signUpSubtitle')}
           </p>
         </div>
 
@@ -58,11 +60,11 @@ export default function AuthScreen() {
 
         <form onSubmit={submit} className="space-y-3">
           <div>
-            <label className="mb-1 block text-xs font-medium text-secondary">E-Mail</label>
+            <label className="mb-1 block text-xs font-medium text-secondary">{t('auth.email')}</label>
             <Input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium text-secondary">Passwort</label>
+            <label className="mb-1 block text-xs font-medium text-secondary">{t('auth.password')}</label>
             <Input
               type="password"
               required
@@ -72,7 +74,7 @@ export default function AuthScreen() {
             />
           </div>
           <Button type="submit" className="w-full" disabled={busy}>
-            {busy ? <Loader2 size={16} className="animate-spin" /> : mode === 'signin' ? 'Anmelden' : 'Registrieren'}
+            {busy ? <Loader2 size={16} className="animate-spin" /> : mode === 'signin' ? t('auth.signIn') : t('auth.signUp')}
           </Button>
         </form>
 
@@ -84,7 +86,7 @@ export default function AuthScreen() {
           }}
           className="mt-4 w-full text-center text-xs text-secondary hover:text-accent"
         >
-          {mode === 'signin' ? 'Noch kein Konto? Registrieren' : 'Schon ein Konto? Anmelden'}
+          {mode === 'signin' ? t('auth.noAccount') : t('auth.hasAccount')}
         </button>
       </div>
     </div>

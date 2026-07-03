@@ -4,9 +4,11 @@ import { useMessages } from '../hooks/useMessages.js';
 import { useChannels } from '../hooks/useChannels.js';
 import { useTeam } from '../hooks/useTeam.js';
 import { useAuth } from '../context/AuthContext.jsx';
+import { useLanguage } from '../context/LanguageContext.jsx';
 import { Card, PageHeader, Button, Input, Textarea, EmptyState, Modal } from '../components/ui.jsx';
 
 function NewChannelModal({ open, onClose, onCreate, members }) {
+  const { t, tRole } = useLanguage();
   const { user } = useAuth();
   const [name, setName] = useState('');
   const [selected, setSelected] = useState([]);
@@ -32,19 +34,17 @@ function NewChannelModal({ open, onClose, onCreate, members }) {
   const otherMembers = members.filter((m) => m.user_id !== user?.id);
 
   return (
-    <Modal open={open} onClose={onClose} title="Neuer Kanal">
+    <Modal open={open} onClose={onClose} title={t('communication.newChannelModalTitle')}>
       <div className="space-y-4">
         <div>
-          <label className="mb-1 block text-xs font-medium text-secondary">Kanalname</label>
-          <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="z. B. Strategie" />
+          <label className="mb-1 block text-xs font-medium text-secondary">{t('communication.channelName')}</label>
+          <Input value={name} onChange={(e) => setName(e.target.value)} placeholder={t('communication.channelNamePlaceholder')} />
         </div>
         <div>
-          <label className="mb-1 block text-xs font-medium text-secondary">
-            Wer soll Zugriff haben? (du bist automatisch dabei)
-          </label>
+          <label className="mb-1 block text-xs font-medium text-secondary">{t('communication.whoHasAccess')}</label>
           <div className="max-h-56 space-y-1 overflow-y-auto rounded-lg border border-app p-2">
             {otherMembers.length === 0 ? (
-              <p className="p-2 text-sm text-muted">Keine weiteren Teammitglieder vorhanden.</p>
+              <p className="p-2 text-sm text-muted">{t('communication.noOtherMembers')}</p>
             ) : (
               otherMembers.map((m) => (
                 <label
@@ -58,14 +58,14 @@ function NewChannelModal({ open, onClose, onCreate, members }) {
                     className="accent-red-500"
                   />
                   {m.display_name}
-                  <span className="text-xs text-muted">({m.role})</span>
+                  <span className="text-xs text-muted">({tRole(m.role)})</span>
                 </label>
               ))
             )}
           </div>
         </div>
         <Button className="w-full" onClick={submit} disabled={busy}>
-          {busy ? 'Wird erstellt…' : 'Kanal erstellen'}
+          {busy ? t('communication.creatingChannel') : t('communication.createChannel')}
         </Button>
       </div>
     </Modal>
@@ -73,6 +73,7 @@ function NewChannelModal({ open, onClose, onCreate, members }) {
 }
 
 export default function Communication() {
+  const { t, locale } = useLanguage();
   const { messages, loading, addMessage, removeMessage, exportText, exportPdf } = useMessages();
   const { channels, loading: channelsLoading, addCustomChannel } = useChannels();
   const { members } = useTeam();
@@ -100,8 +101,8 @@ export default function Communication() {
   return (
     <div>
       <PageHeader
-        title="Kommunikation"
-        subtitle="Team-Chat mit allgemeinem Kanal, Event-Kanälen und eigenen Kanälen."
+        title={t('communication.title')}
+        subtitle={t('communication.subtitle')}
         action={
           <div className="flex gap-2">
             <Button
@@ -109,14 +110,14 @@ export default function Communication() {
               disabled={!channelMessages.length}
               onClick={() => exportText(channelMessages, currentChannel?.name)}
             >
-              <FileText size={16} /> Als Text
+              <FileText size={16} /> {t('communication.exportText')}
             </Button>
             <Button
               variant="secondary"
               disabled={!channelMessages.length}
               onClick={() => exportPdf(channelMessages, currentChannel?.name)}
             >
-              <FileDown size={16} /> Als PDF
+              <FileDown size={16} /> {t('communication.exportPdf')}
             </Button>
           </div>
         }
@@ -125,13 +126,13 @@ export default function Communication() {
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-[220px_1fr]">
         <Card className="p-2">
           <div className="mb-1 flex items-center justify-between px-1">
-            <span className="text-xs font-semibold uppercase tracking-wider text-muted">Kanäle</span>
-            <button onClick={() => setNewChannelOpen(true)} className="text-muted hover:text-accent" title="Neuer Kanal">
+            <span className="text-xs font-semibold uppercase tracking-wider text-muted">{t('communication.channels')}</span>
+            <button onClick={() => setNewChannelOpen(true)} className="text-muted hover:text-accent" title={t('communication.newChannel')}>
               <Plus size={16} />
             </button>
           </div>
           {channelsLoading ? (
-            <p className="p-3 text-sm text-muted">Lade Kanäle…</p>
+            <p className="p-3 text-sm text-muted">{t('communication.loadingChannels')}</p>
           ) : (
             <nav className="space-y-1">
               {channels.map((c) => (
@@ -153,9 +154,9 @@ export default function Communication() {
         <Card className="flex h-[60vh] flex-col overflow-hidden p-0">
           <div className="flex-1 space-y-3 overflow-y-auto scrollbar-thin p-5">
             {loading ? (
-              <p className="text-sm text-muted">Lade Nachrichten…</p>
+              <p className="text-sm text-muted">{t('communication.loadingMessages')}</p>
             ) : channelMessages.length === 0 ? (
-              <EmptyState icon={Hash} title="Noch keine Nachrichten" description="Starte die Team-Kommunikation in diesem Kanal." />
+              <EmptyState icon={Hash} title={t('communication.noMessagesYet')} description={t('communication.noMessagesDescription')} />
             ) : (
               channelMessages.map((m) => (
                 <div key={m.id} className="group flex items-start justify-between gap-3 rounded-lg bg-card-alt p-3">
@@ -163,7 +164,7 @@ export default function Communication() {
                     <div className="flex items-baseline gap-2">
                       <span className="text-sm font-semibold text-primary">{m.author_name}</span>
                       <span className="text-xs text-muted">
-                        {new Date(m.created_at).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' })}
+                        {new Date(m.created_at).toLocaleString(locale, { dateStyle: 'short', timeStyle: 'short' })}
                       </span>
                     </div>
                     <p className="mt-1 whitespace-pre-wrap text-sm text-secondary">{m.text}</p>
@@ -183,7 +184,7 @@ export default function Communication() {
             <div className="flex gap-2">
               <Textarea
                 rows={2}
-                placeholder={`Nachricht in #${currentChannel?.name || ''}… (Enter zum Senden, Shift+Enter für neue Zeile)`}
+                placeholder={t('communication.messagePlaceholder', { channel: currentChannel?.name || '' })}
                 value={text}
                 onChange={(e) => setText(e.target.value)}
                 onKeyDown={(e) => {

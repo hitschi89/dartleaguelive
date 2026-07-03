@@ -1,18 +1,17 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Megaphone, Plus, Trash2, MailOpen, Mail, Paperclip, FileText } from 'lucide-react';
+import { Megaphone, Plus, Trash2, MailOpen, Mail, Paperclip, FileText, Lock } from 'lucide-react';
 import { useBulletins } from '../hooks/useBulletins.js';
 import { useEvents } from '../hooks/useEvents.js';
-import { Card, PageHeader, Button, Input, Textarea, Select, Badge, EmptyState, Modal } from '../components/ui.jsx';
+import { ROLES } from '../lib/roles.js';
+import { useLanguage } from '../context/LanguageContext.jsx';
+import { Card, PageHeader, Button, Input, Textarea, Select, Badge, EmptyState, Modal, RoleVisibilityPicker } from '../components/ui.jsx';
 
 const PRIORITY_TONE = { dringend: 'red', wichtig: 'amber', info: 'blue' };
-const FILTERS = [
-  { key: 'alle', label: 'Alle' },
-  { key: 'ungelesen', label: 'Ungelesen' },
-  { key: 'dringend', label: 'Dringend' },
-];
+const PRIORITY_KEY = { dringend: 'priorityUrgent', wichtig: 'priorityImportant', info: 'priorityInfo' };
 
 function NewBulletinModal({ open, onClose, onCreate, events, pickAttachment }) {
-  const [form, setForm] = useState({
+  const { t } = useLanguage();
+  const FILTERS_INITIAL = {
     title: '',
     source: '',
     category: 'Rennleitung',
@@ -20,7 +19,9 @@ function NewBulletinModal({ open, onClose, onCreate, events, pickAttachment }) {
     date: new Date().toISOString().slice(0, 16),
     body: '',
     event_id: '',
-  });
+  };
+  const [form, setForm] = useState(FILTERS_INITIAL);
+  const [visibleRoles, setVisibleRoles] = useState(null);
   const [file, setFile] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
@@ -41,28 +42,22 @@ function NewBulletinModal({ open, onClose, onCreate, events, pickAttachment }) {
         ...form,
         date: new Date(form.date).toISOString(),
         event_id: form.event_id || null,
+        visible_roles: visibleRoles,
         file,
       });
-      setForm({
-        title: '',
-        source: '',
-        category: 'Rennleitung',
-        priority: 'info',
-        date: new Date().toISOString().slice(0, 16),
-        body: '',
-        event_id: '',
-      });
+      setForm(FILTERS_INITIAL);
+      setVisibleRoles(null);
       setFile(null);
       onClose();
     } catch (err) {
-      setError(err.message || 'Bulletin konnte nicht veröffentlicht werden.');
+      setError(err.message || t('bulletins.publishFailed'));
     } finally {
       setBusy(false);
     }
   };
 
   return (
-    <Modal open={open} onClose={onClose} title="Neues Bulletin" wide>
+    <Modal open={open} onClose={onClose} title={t('bulletins.newBulletinModalTitle')} wide>
       <div className="space-y-4">
         {error && (
           <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-400">
@@ -70,35 +65,35 @@ function NewBulletinModal({ open, onClose, onCreate, events, pickAttachment }) {
           </div>
         )}
         <div>
-          <label className="mb-1 block text-xs font-medium text-secondary">Titel</label>
-          <Input value={form.title} onChange={update('title')} placeholder="z. B. Bulletin Nr. 4 – Boxenausfahrt" />
+          <label className="mb-1 block text-xs font-medium text-secondary">{t('bulletins.fieldTitle')}</label>
+          <Input value={form.title} onChange={update('title')} placeholder={t('bulletins.titlePlaceholder')} />
         </div>
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="mb-1 block text-xs font-medium text-secondary">Quelle</label>
-            <Input value={form.source} onChange={update('source')} placeholder="FIA / Rennleitung / Veranstalter" />
+            <label className="mb-1 block text-xs font-medium text-secondary">{t('bulletins.source')}</label>
+            <Input value={form.source} onChange={update('source')} placeholder={t('bulletins.sourcePlaceholder')} />
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium text-secondary">Kategorie</label>
+            <label className="mb-1 block text-xs font-medium text-secondary">{t('bulletins.category')}</label>
             <Input value={form.category} onChange={update('category')} />
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium text-secondary">Wichtigkeit</label>
+            <label className="mb-1 block text-xs font-medium text-secondary">{t('bulletins.priority')}</label>
             <Select value={form.priority} onChange={update('priority')}>
-              <option value="info">Info</option>
-              <option value="wichtig">Wichtig</option>
-              <option value="dringend">Dringend</option>
+              <option value="info">{t('bulletins.priorityInfo')}</option>
+              <option value="wichtig">{t('bulletins.priorityImportant')}</option>
+              <option value="dringend">{t('bulletins.priorityUrgent')}</option>
             </Select>
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium text-secondary">Datum</label>
+            <label className="mb-1 block text-xs font-medium text-secondary">{t('bulletins.date')}</label>
             <Input type="datetime-local" value={form.date} onChange={update('date')} />
           </div>
         </div>
         <div>
-          <label className="mb-1 block text-xs font-medium text-secondary">Event (optional)</label>
+          <label className="mb-1 block text-xs font-medium text-secondary">{t('bulletins.event')}</label>
           <Select value={form.event_id} onChange={update('event_id')}>
-            <option value="">Kein Event</option>
+            <option value="">{t('bulletins.noEvent')}</option>
             {events.map((ev) => (
               <option key={ev.id} value={ev.id}>
                 {ev.title}
@@ -107,17 +102,23 @@ function NewBulletinModal({ open, onClose, onCreate, events, pickAttachment }) {
           </Select>
         </div>
         <div>
-          <label className="mb-1 block text-xs font-medium text-secondary">Inhalt</label>
+          <label className="mb-1 block text-xs font-medium text-secondary">{t('bulletins.content')}</label>
           <Textarea rows={5} value={form.body} onChange={update('body')} />
         </div>
         <div>
-          <label className="mb-1 block text-xs font-medium text-secondary">PDF-Anhang (optional)</label>
+          <label className="mb-1 block text-xs font-medium text-secondary">{t('bulletins.attachment')}</label>
           <Button variant="secondary" onClick={handlePick} className="w-full">
-            <Paperclip size={15} /> {file ? file.name : 'PDF auswählen'}
+            <Paperclip size={15} /> {file ? file.name : t('bulletins.pickPdf')}
           </Button>
         </div>
+        <RoleVisibilityPicker
+          label={t('common.visibleForRoles')}
+          roles={ROLES}
+          value={visibleRoles}
+          onChange={setVisibleRoles}
+        />
         <Button className="w-full" onClick={submit} disabled={busy}>
-          {busy ? 'Wird veröffentlicht…' : 'Bulletin veröffentlichen'}
+          {busy ? t('bulletins.publishing') : t('bulletins.publish')}
         </Button>
       </div>
     </Modal>
@@ -125,6 +126,7 @@ function NewBulletinModal({ open, onClose, onCreate, events, pickAttachment }) {
 }
 
 function AttachmentModal({ bulletin, onClose, readAttachment }) {
+  const { t } = useLanguage();
   const [url, setUrl] = useState(null);
 
   useEffect(() => {
@@ -136,9 +138,9 @@ function AttachmentModal({ bulletin, onClose, readAttachment }) {
   if (!bulletin) return null;
 
   return (
-    <Modal open={!!bulletin} onClose={onClose} title={bulletin.attachment_name || 'Anhang'} wide>
+    <Modal open={!!bulletin} onClose={onClose} title={bulletin.attachment_name || t('bulletins.attachmentModalTitle')} wide>
       {!url ? (
-        <p className="py-12 text-center text-sm text-muted">Lade PDF…</p>
+        <p className="py-12 text-center text-sm text-muted">{t('bulletins.loadingPdf')}</p>
       ) : (
         <iframe title={bulletin.attachment_name} src={url} className="h-[70vh] w-full rounded-lg border border-app" />
       )}
@@ -147,6 +149,12 @@ function AttachmentModal({ bulletin, onClose, readAttachment }) {
 }
 
 export default function Bulletins() {
+  const { t, tRole, locale } = useLanguage();
+  const FILTERS = [
+    { key: 'alle', label: t('bulletins.filterAll') },
+    { key: 'ungelesen', label: t('bulletins.filterUnread') },
+    { key: 'dringend', label: t('bulletins.filterUrgent') },
+  ];
   const { bulletins, loading, addBulletin, toggleRead, removeBulletin, pickAttachment, readAttachment } =
     useBulletins();
   const { events } = useEvents();
@@ -166,11 +174,11 @@ export default function Bulletins() {
   return (
     <div>
       <PageHeader
-        title="Bulletins & Mitteilungen"
-        subtitle="Offizielle Mitteilungen von FIA, Veranstalter und Rennleitung."
+        title={t('bulletins.title')}
+        subtitle={t('bulletins.subtitle')}
         action={
           <Button onClick={() => setOpen(true)}>
-            <Plus size={16} /> Neues Bulletin
+            <Plus size={16} /> {t('bulletins.newBulletin')}
           </Button>
         }
       />
@@ -190,9 +198,9 @@ export default function Bulletins() {
       </div>
 
       {loading ? (
-        <p className="text-sm text-muted">Lade Bulletins…</p>
+        <p className="text-sm text-muted">{t('bulletins.loadingBulletins')}</p>
       ) : filtered.length === 0 ? (
-        <EmptyState icon={Megaphone} title="Keine Bulletins in dieser Ansicht" />
+        <EmptyState icon={Megaphone} title={t('bulletins.noBulletinsInView')} />
       ) : (
         <div className="space-y-3">
           {filtered.map((b) => (
@@ -200,9 +208,17 @@ export default function Bulletins() {
               <div className="flex items-start justify-between gap-4">
                 <div className="min-w-0 flex-1">
                   <div className="mb-1 flex flex-wrap items-center gap-2">
-                    <Badge tone={PRIORITY_TONE[b.priority] || 'slate'}>{b.priority}</Badge>
+                    <Badge tone={PRIORITY_TONE[b.priority] || 'slate'}>
+                      {t(`bulletins.${PRIORITY_KEY[b.priority] || 'priorityInfo'}`)}
+                    </Badge>
                     <Badge>{b.category}</Badge>
                     {b.event_id && eventTitle(b.event_id) && <Badge tone="blue">{eventTitle(b.event_id)}</Badge>}
+                    {b.visible_roles && b.visible_roles.length > 0 && (
+                      <Badge tone="amber">
+                        <Lock size={10} className="mr-1 inline" />
+                        {b.visible_roles.map(tRole).join(', ')}
+                      </Badge>
+                    )}
                   </div>
                   <p className={`text-sm font-semibold ${b.read ? 'text-secondary' : 'text-primary'}`}>
                     {b.title}
@@ -213,11 +229,11 @@ export default function Bulletins() {
                       onClick={() => setAttachmentBulletin(b)}
                       className="mt-2 flex items-center gap-1.5 rounded-lg bg-card-alt px-2.5 py-1.5 text-xs font-medium text-accent hover:underline"
                     >
-                      <FileText size={13} /> {b.attachment_name || 'PDF ansehen'}
+                      <FileText size={13} /> {b.attachment_name || t('bulletins.viewPdf')}
                     </button>
                   )}
                   <p className="mt-2 text-xs text-muted">
-                    {new Date(b.date).toLocaleString('de-DE', { dateStyle: 'medium', timeStyle: 'short' })}
+                    {new Date(b.date).toLocaleString(locale, { dateStyle: 'medium', timeStyle: 'short' })}
                     {b.source ? ` · ${b.source}` : ''}
                   </p>
                 </div>
@@ -225,16 +241,16 @@ export default function Bulletins() {
                   <button
                     onClick={() => toggleRead(b.id, !b.read)}
                     className="flex items-center gap-1 text-xs text-secondary hover:text-accent"
-                    title={b.read ? 'Als ungelesen markieren' : 'Als gelesen markieren'}
+                    title={b.read ? t('bulletins.markUnread') : t('bulletins.markRead')}
                   >
                     {b.read ? <Mail size={14} /> : <MailOpen size={14} />}
-                    {b.read ? 'Ungelesen' : 'Gelesen'}
+                    {b.read ? t('bulletins.unread') : t('bulletins.read')}
                   </button>
                   <button
                     onClick={() => removeBulletin(b.id)}
                     className="flex items-center gap-1 text-xs text-muted hover:text-red-400"
                   >
-                    <Trash2 size={13} /> Löschen
+                    <Trash2 size={13} /> {t('common.delete')}
                   </button>
                 </div>
               </div>

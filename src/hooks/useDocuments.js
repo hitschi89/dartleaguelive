@@ -22,7 +22,7 @@ export function useDocuments() {
   // Uploads go straight to Supabase Storage (not queued offline) - binary
   // sync is out of scope for the MVP's offline mode, only metadata is cached.
   const addDocument = useCallback(
-    async ({ file, category, tags }) => {
+    async ({ file, category, tags, visibleRoles }) => {
       if (!navigator.onLine) throw new Error('Datei-Uploads benötigen eine Internetverbindung.');
       const id = crypto.randomUUID();
       const ext = file.name.includes('.') ? file.name.slice(file.name.lastIndexOf('.')) : '';
@@ -41,6 +41,7 @@ export function useDocuments() {
         category: category || 'Sonstiges',
         tags: tags || [],
         size: file.size,
+        visible_roles: visibleRoles || null,
         added_by: user.id,
       });
       if (error) throw error;

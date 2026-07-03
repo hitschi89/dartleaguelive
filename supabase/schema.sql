@@ -61,6 +61,7 @@ create table if not exists documents (
   category text not null default 'Sonstiges',
   tags text[] not null default '{}',
   size bigint not null default 0,
+  visible_roles text[],
   added_by uuid references auth.users(id),
   added_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
@@ -79,6 +80,7 @@ create table if not exists bulletins (
   event_id uuid references events(id) on delete set null,
   attachment_path text,
   attachment_name text,
+  visible_roles text[],
   created_by uuid references auth.users(id),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
@@ -119,6 +121,7 @@ create table if not exists tasks (
   event_id uuid references events(id) on delete set null,
   done boolean not null default false,
   notes text,
+  visible_roles text[],
   created_by uuid references auth.users(id),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
@@ -163,6 +166,10 @@ alter table channels add constraint channels_kind_check check (kind in ('general
 
 alter table bulletins add column if not exists attachment_path text;
 alter table bulletins add column if not exists attachment_name text;
+
+alter table documents add column if not exists visible_roles text[];
+alter table bulletins add column if not exists visible_roles text[];
+alter table tasks add column if not exists visible_roles text[];
 
 -- ---------------------------------------------------------------------------
 -- updated_at maintenance
@@ -227,6 +234,17 @@ language sql security definer stable as $$
   end;
 $$;
 
+-- Role-scoped visibility for documents/bulletins/tasks: null or empty
+-- target_roles means visible to the whole team; otherwise only members
+-- whose role is in the list can see the row.
+create or replace function can_view_by_roles(target_team_id uuid, target_roles text[]) returns boolean
+language sql security definer stable as $$
+  select target_roles is null or array_length(target_roles, 1) is null or exists (
+    select 1 from team_members
+    where team_id = target_team_id and user_id = auth.uid() and role = any(target_roles)
+  );
+$$;
+
 -- ---------------------------------------------------------------------------
 -- Row Level Security
 -- ---------------------------------------------------------------------------
@@ -276,14 +294,46 @@ create policy events_all on events for all
   with check (team_id in (select my_team_ids()));
 
 drop policy if exists documents_all on documents;
-create policy documents_all on documents for all
-  using (team_id in (select my_team_ids()))
+
+drop policy if exists documents_select on documents;
+create policy documents_select on documents for select
+  using (
+    team_id in (select my_team_ids())
+    and (added_by = auth.uid() or can_view_by_roles(team_id, visible_roles))
+  );
+
+drop policy if exists documents_insert on documents;
+create policy documents_insert on documents for insert
   with check (team_id in (select my_team_ids()));
 
+drop policy if exists documents_update on documents;
+create policy documents_update on documents for update
+  using (team_id in (select my_team_ids()));
+
+drop policy if exists documents_delete on documents;
+create policy documents_delete on documents for delete
+  using (team_id in (select my_team_ids()));
+
 drop policy if exists bulletins_all on bulletins;
-create policy bulletins_all on bulletins for all
-  using (team_id in (select my_team_ids()))
+
+drop policy if exists bulletins_select on bulletins;
+create policy bulletins_select on bulletins for select
+  using (
+    team_id in (select my_team_ids())
+    and (created_by = auth.uid() or can_view_by_roles(team_id, visible_roles))
+  );
+
+drop policy if exists bulletins_insert on bulletins;
+create policy bulletins_insert on bulletins for insert
   with check (team_id in (select my_team_ids()));
+
+drop policy if exists bulletins_update on bulletins;
+create policy bulletins_update on bulletins for update
+  using (team_id in (select my_team_ids()));
+
+drop policy if exists bulletins_delete on bulletins;
+create policy bulletins_delete on bulletins for delete
+  using (team_id in (select my_team_ids()));
 
 drop policy if exists bulletin_reads_all on bulletin_reads;
 create policy bulletin_reads_all on bulletin_reads for all
@@ -347,9 +397,25 @@ create policy messages_delete on messages for delete
   using (team_id in (select my_team_ids()) and (author_id = auth.uid() or is_team_admin(team_id)));
 
 drop policy if exists tasks_all on tasks;
-create policy tasks_all on tasks for all
-  using (team_id in (select my_team_ids()))
+
+drop policy if exists tasks_select on tasks;
+create policy tasks_select on tasks for select
+  using (
+    team_id in (select my_team_ids())
+    and (created_by = auth.uid() or can_view_by_roles(team_id, visible_roles))
+  );
+
+drop policy if exists tasks_insert on tasks;
+create policy tasks_insert on tasks for insert
   with check (team_id in (select my_team_ids()));
+
+drop policy if exists tasks_update on tasks;
+create policy tasks_update on tasks for update
+  using (team_id in (select my_team_ids()));
+
+drop policy if exists tasks_delete on tasks;
+create policy tasks_delete on tasks for delete
+  using (team_id in (select my_team_ids()));
 
 -- ---------------------------------------------------------------------------
 -- Storage (documents + team logos)

@@ -1,3 +1,5 @@
+import { useLanguage } from '../context/LanguageContext.jsx';
+
 export function PageHeader({ title, subtitle, action }) {
   return (
     <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
@@ -90,6 +92,53 @@ export function Select(props) {
       className="w-full rounded-lg border border-app bg-card-alt px-3 py-2 text-sm text-primary focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
       {...props}
     />
+  );
+}
+
+export function RoleVisibilityPicker({ value, onChange, roles, label }) {
+  const { t, tRole } = useLanguage();
+  const isAll = !value || value.length === 0;
+  const toggleRole = (role) => {
+    if (isAll) {
+      onChange(roles.filter((r) => r !== role));
+    } else if (value.includes(role)) {
+      const next = value.filter((r) => r !== role);
+      onChange(next.length ? next : null);
+    } else {
+      onChange([...value, role]);
+    }
+  };
+
+  return (
+    <div>
+      {label && <label className="mb-1 block text-xs font-medium text-secondary">{label}</label>}
+      <div className="flex flex-wrap gap-1.5">
+        <button
+          type="button"
+          onClick={() => onChange(null)}
+          className={`rounded-full border px-2.5 py-1 text-xs font-medium ${
+            isAll ? 'border-accent bg-accent/15 text-accent' : 'border-app text-secondary hover-app'
+          }`}
+        >
+          {t('common.all')}
+        </button>
+        {roles.map((role) => {
+          const active = isAll || value.includes(role);
+          return (
+            <button
+              type="button"
+              key={role}
+              onClick={() => toggleRole(role)}
+              className={`rounded-full border px-2.5 py-1 text-xs font-medium ${
+                active && !isAll ? 'border-accent bg-accent/15 text-accent' : 'border-app text-secondary hover-app'
+              }`}
+            >
+              {tRole(role)}
+            </button>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 
